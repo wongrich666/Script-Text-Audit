@@ -1,0 +1,58 @@
+version: "mvp_0.1"
+
+problem_tags:
+  - key: weak_opening
+    name: 开头弱
+    level: high
+
+  - key: unclear_protagonist_goal
+    name: 主角目标不清
+    level: high
+
+  - key: weak_conflict
+    name: 核心冲突不足
+    level: high
+
+  - key: weak_antagonist_motivation
+    name: 反派动机不足
+    level: medium
+
+  - key: slow_middle
+    name: 中段拖沓
+    level: high
+
+  - key: insufficient_reversal
+    name: 反转不够
+    level: medium
+
+  - key: weak_emotional_payoff
+    name: 情绪补偿不足
+    level: high
+
+  - key: excessive_exposition
+    name: 台词解释过多
+    level: medium
+
+  - key: unnatural_dialogue
+    name: 台词不够口语化
+    level: medium
+
+  - key: weak_cliffhanger
+    name: 结尾钩子弱
+    level: high
+
+  - key: illogical_motivation
+    name: 人物动机不合理
+    level: high
+
+  - key: genre_homogeneity
+    name: 同质化严重
+    level: medium
+
+  - key: weak_interaction_point
+    name: 互动点不足
+    level: low
+
+  - key: high_revision_cost
+    name: 修改成本较高
+    level: medium

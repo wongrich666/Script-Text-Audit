@@ -1,0 +1,122 @@
+version: "mvp_0.1"
+total_score: 100
+
+dimensions:
+  - key: genre_clarity
+    name: 题材清晰度
+    max_score: 8
+    description: 判断剧本类型是否明确，是否符合短剧常见题材逻辑。
+    common_problems:
+      - 题材定位模糊
+      - 类型卖点不清
+      - 题材与剧情内容不匹配
+
+  - key: opening_hook
+    name: 开头钩子强度
+    max_score: 12
+    description: 判断开头是否能快速建立人物处境、核心冲突和观看动力。
+    common_problems:
+      - 第一集开头冲突出现太晚
+      - 主角困境不清楚
+      - 缺少强刺激事件
+      - 前三集追看动力不足
+
+  - key: protagonist_goal
+    name: 主角目标强度
+    max_score: 10
+    description: 判断主角是否有明确目标、行动动力和持续推进剧情的能力。
+    common_problems:
+      - 主角目标不清
+      - 主角行动被动
+      - 主角动机不足
+      - 成长弧不明显
+
+  - key: relationship_tension
+    name: 人物关系张力
+    max_score: 8
+    description: 判断人物之间是否存在有效冲突、利益关系、情感关系或身份反差。
+    common_problems:
+      - 人物关系平
+      - 关系冲突不足
+      - CP张力不足
+      - 人物互动缺少戏剧性
+
+  - key: conflict_strength
+    name: 冲突强度
+    max_score: 10
+    description: 判断剧情是否有足够的外部压力、人物对抗和事件推动。
+    common_problems:
+      - 核心冲突不足
+      - 反派压迫感不足
+      - 事件推动弱
+      - 冲突重复但不升级
+
+  - key: reversal_design
+    name: 反转设计
+    max_score: 10
+    description: 判断剧本是否有身份反转、关系反转、利益反转、认知反转等有效节点。
+    common_problems:
+      - 反转数量少
+      - 反转位置不合理
+      - 反转缺少铺垫
+      - 反转不推动主线
+
+  - key: emotional_drive
+    name: 情绪驱动力
+    max_score: 10
+    description: 判断爽点、虐点、憋屈感、反击感、心疼感、期待感是否形成有效推进。
+    common_problems:
+      - 爽点不足
+      - 虐点过长
+      - 情绪补偿不足
+      - 观众情绪释放太晚
+
+  - key: pace_control
+    name: 节奏控制
+    max_score: 10
+    description: 判断剧情是否拖沓，主线是否持续推进，是否存在解释过多或中段乏力。
+    common_problems:
+      - 中段拖沓
+      - 信息重复
+      - 主线推进不足
+      - 支线干扰主线
+
+  - key: dialogue_quality
+    name: 台词质量
+    max_score: 8
+    description: 判断台词是否口语化、短剧化、有冲突、有信息密度。
+    common_problems:
+      - 解释性台词过多
+      - 台词不够口语化
+      - 台词信息密度低
+      - 台词缺少冲突感
+
+  - key: completion_potential
+    name: 完播潜力
+    max_score: 8
+    description: 判断剧本是否具备持续吸引观众看完的能力。
+    common_problems:
+      - 每集结尾钩子弱
+      - 中后段吸引力下降
+      - 缺少持续悬念
+      - 剧情推进不稳定
+
+  - key: interaction_potential
+    name: 互动潜力
+    max_score: 6
+    description: 判断剧本是否容易引发评论、争议、催更、共鸣或角色讨论。
+    common_problems:
+      - 缺少话题点
+      - 角色讨论度低
+      - 情绪刺激不足
+      - 缺少可传播桥段
+
+  - key: revision_value
+    name: 修改价值
+    max_score: 10
+    description: 判断剧本问题是否可通过修改改善，以及是否值得继续优化。
+    common_problems:
+      - 底层设定薄弱
+      - 主线需要大幅重构
+      - 只适合局部润色
+      - 修改收益不明确

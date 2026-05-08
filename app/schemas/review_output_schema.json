@@ -1,0 +1,64 @@
+{
+  "summary": {
+    "script_title": "",
+    "total_score": 0,
+    "level": "",
+    "confidence": "",
+    "final_recommendation": ""
+  },
+  "dimension_scores": [
+    {
+      "key": "",
+      "name": "",
+      "score": 0,
+      "max_score": 0,
+      "reason": "",
+      "evidence": "",
+      "suggestion": ""
+    }
+  ],
+  "episode_metrics": [
+    {
+      "episode": 1,
+      "conflict_strength": 0,
+      "pace_score": 0,
+      "emotion_intensity": 0,
+      "hook_strength": 0,
+      "main_plot_progress": 0
+    }
+  ],
+  "emotion_curve": [
+    {
+      "episode": 1,
+      "爽感": 0,
+      "虐感": 0,
+      "憋屈感": 0,
+      "反击感": 0,
+      "期待感": 0
+    }
+  ],
+  "reversal_points": [
+    {
+      "episode": 1,
+      "type": "",
+      "description": "",
+      "strength": 0
+    }
+  ],
+  "problem_tags": [
+    {
+      "key": "",
+      "name": "",
+      "level": "",
+      "description": "",
+      "evidence": "",
+      "suggestion": ""
+    }
+  ],
+  "priority_suggestions": {
+    "high": [],
+    "medium": [],
+    "low": []
+  },
+  "text_report": ""
+}

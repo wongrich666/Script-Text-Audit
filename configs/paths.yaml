@@ -1,0 +1,11 @@
+project_root: "D:/PythonProjects/script_text_audit"
+data_root: "E:/AIData/script_text_audit"
+backup_root: "G:/AIBackup/script_text_audit"
+
+raw_scripts_dir: "E:/AIData/script_text_audit/raw_scripts"
+parsed_features_dir: "E:/AIData/script_text_audit/parsed_features"
+scoring_results_dir: "E:/AIData/script_text_audit/scoring_results"
+visual_data_dir: "E:/AIData/script_text_audit/visual_data"
+reports_dir: "E:/AIData/script_text_audit/reports"
+human_feedback_dir: "E:/AIData/script_text_audit/human_feedback"
+training_samples_dir: "E:/AIData/script_text_audit/training_samples"
