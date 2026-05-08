@@ -56,3 +56,23 @@ problem_tags:
   - key: high_revision_cost
     name: 修改成本较高
     level: medium
+
+  - key: weak_external_opposition
+    name: 外部对抗不足
+    level: medium
+
+  - key: single_character_relation
+    name: 人物关系单一
+    level: medium
+
+  - key: weak_interpersonal_interaction
+    name: 人物互动不足
+    level: medium
+
+  - key: weak_topic_hook
+    name: 话题钩子不足
+    level: low
+
+  - key: weak_genre_distinction
+    name: 题材辨识度不足
+    level: medium
