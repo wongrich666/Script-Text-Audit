@@ -1,0 +1,30 @@
+active_provider_env: "API"
+
+defaults:
+  temperature: 0.2
+  max_tokens: 8000
+  timeout_seconds: 180
+
+providers:
+  deepseek:
+    type: "openai_compatible"
+    host_env: "DEEPSEEK_HOST"
+    api_key_env: "DEEPSEEK_API_KEY"
+    model_env: "DEEPSEEK_MODEL"
+
+  gemini:
+    type: "openai_compatible"
+    host_env: "GEMINI_HOST"
+    api_key_env: "GEMINI_API_KEY"
+    model_env: "GEMINI_MODEL"
+
+  claude:
+    type: "openai_compatible"
+    host_env: "CLAUDE_HOST"
+    api_key_env: "CLAUDE_API_KEY"
+    model_env: "CLAUDE_MODEL"
+
+  ollama:
+    type: "ollama_chat"
+    host_env: "OLLAMA_HOST"
+    model_env: "OLLAMA_MODEL"
