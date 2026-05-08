@@ -11,3 +11,12 @@ temp/
 
 *.sqlite3
 *.db
+.idea/
+.vscode/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.log
+*.db
+*.sqlite3
