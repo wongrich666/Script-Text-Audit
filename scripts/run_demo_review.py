@@ -16,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
+from app.services.director_brief import append_director_brief_section
 from app.services.tencent_video_data.report_integration import append_market_feedback_section
 
 PATHS_FILE = PROJECT_ROOT / "configs" / "paths.yaml"
@@ -596,6 +597,10 @@ def main() -> None:
     markdown_report = append_market_feedback_section(
         build_markdown_report(visual_report),
         PROJECT_ROOT / "data" / "tencent_video_normalized" / "market_feedback_summary.json",
+    )
+    markdown_report = append_director_brief_section(
+        markdown_report,
+        PROJECT_ROOT / "data" / "director_brief" / "director_brief.json",
     )
 
     raw_scripts_dir = Path(paths["raw_scripts_dir"])

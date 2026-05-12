@@ -80,7 +80,9 @@ def extract_episode_no_from_title(title: Any) -> int | None:
     text = str(title)
     patterns = [
         r"(?:^|[^A-Za-z0-9])SJS[_-]?0*(\d+)(?:\D|$)",
+        r"(?:^|[^A-Za-z0-9])episode[_-]?0*(\d+)(?:\D|$)",
         r"第\s*0*(\d+)\s*集",
+        r"[\u4e00-\u9fff]+0*(\d{1,3})(?:\D|$)",
     ]
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)

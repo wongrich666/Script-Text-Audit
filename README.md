@@ -45,6 +45,8 @@ python scripts/import_tencent_video_data.py --input data/tencent_video_exports -
 
 如果 `data/tencent_video_normalized/market_feedback_summary.json` 存在，后续审核报告会自动追加“腾讯视频平台反馈分析”章节；如果不存在，原来的纯文本审核流程不受影响。
 
+详细使用说明见：[docs/tencent_video_data.md](docs/tencent_video_data.md)。
+
 ## 项目目录
 
 - app/prompts：提示词

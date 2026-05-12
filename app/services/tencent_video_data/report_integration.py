@@ -125,7 +125,7 @@ def _render_high_exposure_low_valid(items: Any) -> list[str]:
         if valid_rate:
             detail.append(f"有效播放率 {valid_rate}")
         suffix = f"（{'，'.join(detail)}）" if detail else ""
-        _append_non_empty(lines, f"数据提示：{label}{suffix}，{reason}，建议复盘前30秒、标题封面预期和本集冲突推进。")
+        _append_non_empty(lines, f"数据提示：{label}{suffix}，{reason}，建议复盘前30秒、标题封面预期和本集冲突推进，可能需要检查观众预期与正片内容是否一致。")
     return lines
 
 
@@ -186,13 +186,13 @@ def build_market_feedback_markdown(summary: dict[str, Any] | None) -> str:
     album_lines = _render_album_summary(album) if isinstance(album, dict) else []
     lines.extend(album_lines or ["- 暂无可用于专辑表现判断的平台数据。"])
 
-    lines.extend(["", "### 高曝光低有效播放集数", ""])
-    high_exposure_lines = _render_high_exposure_low_valid(summary.get("high_exposure_low_valid_episodes"))
-    lines.extend(high_exposure_lines or ["- 暂无可展示的高曝光低有效播放集数。"])
-
     lines.extend(["", "### 剧集掉点排行", ""])
     drop_lines = _render_drop_off(summary.get("episode_drop_off_ranking"))
     lines.extend(drop_lines or ["- 暂无可展示的相邻集数掉点记录。"])
+
+    lines.extend(["", "### 高曝光低有效播放集数", ""])
+    high_exposure_lines = _render_high_exposure_low_valid(summary.get("high_exposure_low_valid_episodes"))
+    lines.extend(high_exposure_lines or ["- 暂无可展示的高曝光低有效播放集数。"])
 
     lines.extend(["", "### 高互动/高分享集数", ""])
     interaction_lines = _render_interaction_or_share(
@@ -225,6 +225,8 @@ def build_market_feedback_markdown(summary: dict[str, Any] | None) -> str:
 
 
 def append_market_feedback_section(markdown_text: str, summary_path: str | Path = DEFAULT_SUMMARY_PATH) -> str:
+    """Append the optional Tencent Video summary without requiring director feedback data."""
+
     summary = load_market_feedback_summary(summary_path)
     section = build_market_feedback_markdown(summary)
     if not section:

@@ -12,6 +12,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 from app.services.tencent_video_data import (
+    align_episode_scripts,
+    build_episode_samples,
+    build_episode_text_features,
     generate_market_feedback_summary,
     import_tencent_video_exports,
 )
@@ -33,9 +36,27 @@ def main() -> None:
 
     import_result = import_tencent_video_exports(args.input, args.output)
     analysis_result = generate_market_feedback_summary(args.output)
+    sample_result = build_episode_samples(args.output)
+    script_align_result = align_episode_scripts(
+        args.output,
+        PROJECT_ROOT / "data" / "episode_scripts",
+    )
+    text_feature_result = build_episode_text_features(args.output)
 
-    warnings = import_result.warnings + analysis_result.warnings
-    generated_files = import_result.generated_files + analysis_result.generated_files
+    warnings = (
+        import_result.warnings
+        + analysis_result.warnings
+        + sample_result.warnings
+        + script_align_result.warnings
+        + text_feature_result.warnings
+    )
+    generated_files = (
+        import_result.generated_files
+        + analysis_result.generated_files
+        + sample_result.generated_files
+        + script_align_result.updated_files
+        + text_feature_result.generated_files
+    )
 
     print("腾讯视频平台数据导入完成。")
     print("")

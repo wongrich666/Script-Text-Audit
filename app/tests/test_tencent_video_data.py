@@ -19,6 +19,17 @@ from app.services.tencent_video_data.importer import (
     parse_percent,
 )
 from app.services.tencent_video_data.report_integration import append_market_feedback_section
+from app.services.tencent_video_data.sample_builder import build_episode_samples
+from app.services.tencent_video_data.script_aligner import align_episode_scripts
+from app.services.tencent_video_data.text_feature_schema import (
+    PLACEHOLDER_FEATURE_COLUMNS,
+    build_episode_text_features,
+)
+from app.services.tencent_video_data.sync_service import (
+    TencentVideoSyncResult,
+    _download_or_snapshot,
+    sync_tencent_video_exports,
+)
 
 
 class TencentVideoDataTests(unittest.TestCase):
@@ -61,6 +72,9 @@ class TencentVideoDataTests(unittest.TestCase):
     def test_extract_episode_no_from_sjs_title(self) -> None:
         self.assertEqual(extract_episode_no_from_title("短剧_SJS_05_正片"), 5)
         self.assertEqual(extract_episode_no_from_title("SJS_22"), 22)
+        self.assertEqual(extract_episode_no_from_title("小医奴03"), 3)
+        self.assertEqual(extract_episode_no_from_title("第12集"), 12)
+        self.assertEqual(extract_episode_no_from_title("episode_07"), 7)
 
     def test_import_xlsx_and_missing_columns(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -272,7 +286,13 @@ class TencentVideoDataTests(unittest.TestCase):
             self.assertIn("剧本复盘建议", report)
             self.assertIn("数据提示", report)
             self.assertIn("建议复盘", report)
+            self.assertIn("可能需要检查", report)
             self.assertIn("前30秒", report)
+            self.assertLess(report.index("账号整体趋势"), report.index("专辑表现"))
+            self.assertLess(report.index("专辑表现"), report.index("剧集掉点排行"))
+            self.assertLess(report.index("剧集掉点排行"), report.index("高曝光低有效播放集数"))
+            self.assertLess(report.index("高曝光低有效播放集数"), report.index("高互动/高分享集数"))
+            self.assertLess(report.index("高互动/高分享集数"), report.index("剧本复盘建议"))
             self.assertNotIn("None", report)
             self.assertNotIn("null", report)
 
@@ -285,6 +305,37 @@ class TencentVideoDataTests(unittest.TestCase):
 
             self.assertEqual(report, original_report)
             self.assertIn("中文正文正常", report)
+
+    def test_report_generates_without_director_form_data(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "market_feedback_summary.json"
+            summary_path.write_text(
+                json.dumps(
+                    {
+                        "account_growth_summary": {
+                            "diagnosis": ["数据提示：账号趋势可作为辅助参考。"],
+                        },
+                        "album_performance_summary": {
+                            "diagnosis": ["数据提示：专辑表现建议结合文本审核复盘。"],
+                        },
+                        "episode_drop_off_ranking": [],
+                        "high_exposure_low_valid_episodes": [],
+                        "high_interaction_episodes": [],
+                        "high_share_episodes": [],
+                        "script_review_suggestions": ["建议复盘上一集结尾钩子和本集开场承接。"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            report_without_director_form = "# 原审核报告\n\n没有导演表单数据。"
+
+            report = append_market_feedback_section(report_without_director_form, summary_path)
+
+            self.assertIn("腾讯视频平台反馈分析", report)
+            self.assertIn("剧本复盘建议", report)
+            self.assertIn("没有导演表单数据", report)
+            self.assertNotIn("导演表单缺失", report)
 
     def test_market_feedback_report_keeps_chinese_readable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -308,6 +359,209 @@ class TencentVideoDataTests(unittest.TestCase):
             self.assertIn("账号有效播放率", report)
             self.assertIn("标题封面预期", report)
             self.assertNotIn("\\u", report)
+
+    def test_build_episode_samples_merges_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            normalized_dir = Path(temp_dir)
+            pd.DataFrame(
+                {
+                    "title": ["SJS_05", "小医奴03", "第12集"],
+                    "episode_no": [None, None, None],
+                    "total_views": [1500, 1000, 800],
+                    "total_valid_views": [500, 700, 600],
+                    "valid_view_rate": [0.33, 0.7, 0.75],
+                    "likes": [20, 30, 40],
+                    "comments": [2, 3, 4],
+                    "shares": [1, 2, 3],
+                }
+            ).to_csv(normalized_dir / "episode_stats.csv", index=False)
+            (normalized_dir / "market_feedback_summary.json").write_text(
+                json.dumps(
+                    {
+                        "high_exposure_low_valid_episodes": [
+                            {"title": "SJS_05", "episode_no": 5},
+                        ],
+                        "episode_drop_off_ranking": [
+                            {"title": "小医奴03"},
+                        ],
+                        "high_interaction_episodes": [
+                            {"title": "第12集"},
+                        ],
+                        "high_share_episodes": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = build_episode_samples(normalized_dir)
+            output_file = normalized_dir / "episode_samples.csv"
+            samples = pd.read_csv(output_file, keep_default_na=False)
+
+            self.assertTrue(output_file.exists())
+            self.assertIn(str(output_file), result.generated_files)
+            self.assertIn("script_text", samples.columns)
+            self.assertTrue((samples["script_text"] == "").all())
+
+            by_episode = samples.set_index("episode_no")
+            self.assertTrue(bool(by_episode.loc[5, "is_high_exposure_low_valid"]))
+            self.assertTrue(bool(by_episode.loc[3, "is_drop_off_episode"]))
+            self.assertTrue(bool(by_episode.loc[12, "is_high_interaction"]))
+            self.assertFalse(bool(by_episode.loc[5, "is_high_share"]))
+            self.assertEqual(int(by_episode.loc[5].name), 5)
+
+    def test_align_episode_scripts_from_supported_filenames(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            normalized_dir = base / "normalized"
+            script_dir = base / "episode_scripts"
+            normalized_dir.mkdir()
+            script_dir.mkdir()
+            pd.DataFrame(
+                {
+                    "episode_no": [3, 5, 7, 12],
+                    "episode_title": ["小医奴03", "SJS_05", "episode_07", "第12集"],
+                    "total_views": [100, 200, 300, 400],
+                    "total_valid_views": [80, 160, 240, 320],
+                    "valid_view_rate": [0.8, 0.8, 0.8, 0.8],
+                    "likes": [1, 2, 3, 4],
+                    "comments": [0, 1, 1, 2],
+                    "shares": [0, 1, 1, 2],
+                    "is_high_exposure_low_valid": [False, False, False, False],
+                    "is_drop_off_episode": [False, False, False, False],
+                    "is_high_interaction": [False, False, False, False],
+                    "is_high_share": [False, False, False, False],
+                    "script_text": ["", "", "", ""],
+                }
+            ).to_csv(normalized_dir / "episode_samples.csv", index=False)
+            (script_dir / "SJS_05.txt").write_text("第五集剧本文本", encoding="utf-8")
+            (script_dir / "小医奴03.txt").write_text("第三集剧本文本", encoding="utf-8")
+            (script_dir / "episode_07.txt").write_text("第七集剧本文本", encoding="utf-8")
+            (script_dir / "第12集.txt").write_text("第十二集剧本文本", encoding="utf-8")
+
+            result = align_episode_scripts(normalized_dir, script_dir)
+            samples = pd.read_csv(normalized_dir / "episode_samples.csv", keep_default_na=False)
+            by_episode = samples.set_index("episode_no")
+
+            self.assertEqual(result.aligned_count, 4)
+            self.assertEqual(by_episode.loc[5, "script_text"], "第五集剧本文本")
+            self.assertEqual(by_episode.loc[3, "script_text"], "第三集剧本文本")
+            self.assertEqual(by_episode.loc[7, "script_text"], "第七集剧本文本")
+            self.assertEqual(by_episode.loc[12, "script_text"], "第十二集剧本文本")
+
+    def test_align_episode_scripts_missing_directory_does_not_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            normalized_dir = Path(temp_dir)
+            pd.DataFrame(
+                {
+                    "episode_no": [5],
+                    "episode_title": ["SJS_05"],
+                    "script_text": [""],
+                }
+            ).to_csv(normalized_dir / "episode_samples.csv", index=False)
+
+            result = align_episode_scripts(normalized_dir, normalized_dir / "missing_scripts")
+
+            self.assertEqual(result.aligned_count, 0)
+            self.assertTrue(result.warnings)
+
+    def test_unmatched_episode_script_text_remains_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            normalized_dir = base / "normalized"
+            script_dir = base / "episode_scripts"
+            normalized_dir.mkdir()
+            script_dir.mkdir()
+            pd.DataFrame(
+                {
+                    "episode_no": [5, 6],
+                    "episode_title": ["SJS_05", "SJS_06"],
+                    "script_text": ["", ""],
+                }
+            ).to_csv(normalized_dir / "episode_samples.csv", index=False)
+            (script_dir / "SJS_05.txt").write_text("第五集剧本文本", encoding="utf-8")
+
+            align_episode_scripts(normalized_dir, script_dir)
+            samples = pd.read_csv(normalized_dir / "episode_samples.csv", keep_default_na=False)
+            by_episode = samples.set_index("episode_no")
+
+            self.assertEqual(by_episode.loc[5, "script_text"], "第五集剧本文本")
+            self.assertEqual(by_episode.loc[6, "script_text"], "")
+
+    def test_build_episode_text_features_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            normalized_dir = Path(temp_dir)
+            pd.DataFrame(
+                {
+                    "episode_no": [1, 2],
+                    "episode_title": ["SJS_01", "SJS_02"],
+                    "script_text": ["", "第二集剧本文本"],
+                }
+            ).to_csv(normalized_dir / "episode_samples.csv", index=False)
+
+            result = build_episode_text_features(normalized_dir)
+            output_file = normalized_dir / "episode_text_features.csv"
+            features = pd.read_csv(output_file, keep_default_na=False)
+
+            self.assertTrue(output_file.exists())
+            self.assertIn(str(output_file), result.generated_files)
+            self.assertFalse(bool(features.loc[0, "has_script_text"]))
+            self.assertEqual(features.loc[0, "script_length"], 0)
+            self.assertTrue(bool(features.loc[1, "has_script_text"]))
+            self.assertGreater(features.loc[1, "script_length"], 0)
+
+            for field in PLACEHOLDER_FEATURE_COLUMNS:
+                self.assertIn(field, features.columns)
+                self.assertTrue((features[field] == "").all())
+
+    def test_sync_missing_auth_state_returns_warning_without_network(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            result = sync_tencent_video_exports(
+                auth_state_path=base / "missing_state.json",
+                output_dir=base / "exports",
+            )
+
+            self.assertEqual(result.downloaded_files, [])
+            self.assertTrue(any("登录态不存在" in warning for warning in result.warnings))
+
+    def test_sync_no_download_button_saves_snapshot_without_error(self) -> None:
+        class EmptyLocator:
+            def __init__(self, text: str = "") -> None:
+                self.text = text
+
+            def count(self) -> int:
+                return 0
+
+            def first(self) -> "EmptyLocator":
+                return self
+
+            def inner_text(self, timeout: int = 0) -> str:
+                return self.text
+
+        class FakePage:
+            def get_by_role(self, *args: object, **kwargs: object) -> EmptyLocator:
+                return EmptyLocator()
+
+            def get_by_text(self, *args: object, **kwargs: object) -> EmptyLocator:
+                return EmptyLocator()
+
+            def locator(self, selector: str) -> EmptyLocator:
+                if selector == "body":
+                    return EmptyLocator("粉丝页面内容，没有下载按钮")
+                return EmptyLocator()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            result = TencentVideoSyncResult()
+
+            _download_or_snapshot(FakePage(), output_dir, result, timeout_ms=100)
+
+            snapshot_path = output_dir / "fans_snapshot.txt"
+            self.assertTrue(snapshot_path.exists())
+            self.assertIn("粉丝页面内容", snapshot_path.read_text(encoding="utf-8"))
+            self.assertIn(str(snapshot_path), result.snapshot_files)
+            self.assertTrue(any("未找到" in warning for warning in result.warnings))
 
 
 if __name__ == "__main__":

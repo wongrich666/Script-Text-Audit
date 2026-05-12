@@ -6,6 +6,7 @@ __pycache__/
 .DS_Store
 
 data/
+data/director_brief/
 data/tencent_video_exports/
 data/tencent_video_normalized/
 data/tencent_video_auth/
