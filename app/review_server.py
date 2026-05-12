@@ -77,6 +77,96 @@ def load_markdown_report(script_id: str) -> str:
         return report_path.read_text(encoding="utf-8")
     return ""
 
+
+def parse_json_list(value: str) -> List[Any]:
+    try:
+        parsed = json.loads(value or "[]")
+    except json.JSONDecodeError:
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def parse_json_string_list(value: str) -> List[str]:
+    items: List[str] = []
+    for item in parse_json_list(value):
+        text = str(item).strip()
+        if text:
+            items.append(text)
+    return items
+
+
+def normalize_score(value: Any, default: int = 60) -> int:
+    try:
+        score = int(round(float(value)))
+    except (TypeError, ValueError):
+        return default
+    return max(0, min(100, score))
+
+
+def normalize_suggestion_score(value: Any) -> int:
+    try:
+        score = int(round(float(value)))
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(10, score))
+
+
+def collect_problem_tags(visual_data: Dict[str, Any]) -> List[str]:
+    tags: List[str] = []
+    for item in visual_data.get("problem_tag_distribution", []) or []:
+        if isinstance(item, dict):
+            tag = item.get("tag", "")
+        else:
+            tag = item
+        tag_text = str(tag).strip()
+        if tag_text and tag_text not in tags:
+            tags.append(tag_text)
+    return tags
+
+
+def collect_problem_tag_items(visual_data: Dict[str, Any]) -> List[Dict[str, str]]:
+    tag_items: List[Dict[str, str]] = []
+    for item in visual_data.get("problem_tag_distribution", []) or []:
+        if isinstance(item, dict):
+            tag = str(item.get("tag", "")).strip()
+            level = str(item.get("level", "")).strip()
+        else:
+            tag = str(item).strip()
+            level = ""
+        if tag:
+            tag_items.append({"tag": tag, "level": level})
+    return tag_items
+
+
+def collect_suggestions(visual_report: Dict[str, Any]) -> List[Dict[str, str]]:
+    suggestions: List[Dict[str, str]] = []
+    priority_suggestions = visual_report.get("priority_suggestions") or {}
+    if isinstance(priority_suggestions, dict):
+        priority_order = ["high", "medium", "low", "严重", "中等", "轻度"]
+        ordered_priorities = [p for p in priority_order if p in priority_suggestions]
+        ordered_priorities.extend(p for p in priority_suggestions.keys() if p not in ordered_priorities)
+        for priority in ordered_priorities:
+            items = priority_suggestions.get(priority, []) or []
+            if isinstance(items, str):
+                items = [items]
+            for item in items:
+                suggestion_text = item.get("suggestion", "") if isinstance(item, dict) else item
+                suggestion_text = str(suggestion_text).strip()
+                if suggestion_text:
+                    suggestions.append({"priority": str(priority), "suggestion": suggestion_text})
+
+    if not suggestions:
+        fallback = (visual_report.get("text_report") or {}).get("suggestions", []) or []
+        if isinstance(fallback, str):
+            fallback = [fallback]
+        for item in fallback:
+            suggestion_text = item.get("suggestion", "") if isinstance(item, dict) else item
+            suggestion_text = str(suggestion_text).strip()
+            if suggestion_text:
+                suggestions.append({"priority": "unknown", "suggestion": suggestion_text})
+    return suggestions
+
+
 def move_to_trash(path: Path, trash_root: Path, script_id: str) -> None:
     if not path.exists():
         return
@@ -134,7 +224,7 @@ def render_markdown(markdown_text: str) -> str:
         ],
     )
 
-    al轻度ed_tags = [
+    allowed_tags = [
         "h1", "h2", "h3", "h4", "h5", "h6",
         "p", "br", "hr",
         "strong", "em", "b", "i",
@@ -145,14 +235,14 @@ def render_markdown(markdown_text: str) -> str:
         "a",
     ]
 
-    al轻度ed_attributes = {
+    allowed_attributes = {
         "a": ["href", "title", "target", "rel"],
     }
 
     return bleach.clean(
         raw_html,
-        tags=al轻度ed_tags,
-        attributes=al轻度ed_attributes,
+        tags=allowed_tags,
+        attributes=allowed_attributes,
         strip=True,
     )
 
@@ -222,7 +312,7 @@ def page_layout(title: str, body: str) -> str:
       height: 12px;
       background: #e5e7eb;
       border-radius: 999px;
-      overf轻度: hidden;
+      overflow: hidden;
       margin-top: 6px;
     }}
     .bar {{
@@ -236,6 +326,119 @@ def page_layout(title: str, body: str) -> str:
       background: #eef2ff;
       margin: 4px 4px 4px 0;
       font-size: 13px;
+    }}
+    .feedback-section {{
+      border-top: 1px solid #e5e7eb;
+      padding-top: 16px;
+      margin-top: 18px;
+    }}
+    .machine-score-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 12px 0;
+    }}
+    .machine-score-row span {{
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }}
+    .radio-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 8px;
+      margin: 8px 0 10px;
+    }}
+    .radio-grid label {{
+      margin: 0;
+      font-weight: 500;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: #fff;
+    }}
+    .radio-grid input {{
+      width: auto;
+      margin-right: 6px;
+    }}
+    input[type="range"] {{
+      padding: 0;
+    }}
+    .range-row {{
+      display: grid;
+      grid-template-columns: 1fr 56px;
+      gap: 12px;
+      align-items: center;
+    }}
+    .range-value {{
+      font-weight: 700;
+      text-align: center;
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 8px;
+    }}
+    .toggle-button {{
+      margin: 4px 6px 4px 0;
+      background: #2563eb;
+      border: 1px solid #2563eb;
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: white;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }}
+    .toggle-button.rejected,
+    .toggle-button:not(.selected) {{
+      background: #f3f4f6;
+      color: #6b7280;
+      border-color: #d1d5db;
+    }}
+    .suggestion-card {{
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 10px 0;
+      background: #fff;
+    }}
+    .suggestion-card p {{
+      margin: 8px 0;
+    }}
+    .priority-badge {{
+      display: inline-block;
+      font-size: 12px;
+      color: #374151;
+      background: #f3f4f6;
+      border-radius: 999px;
+      padding: 3px 8px;
+      margin-bottom: 6px;
+    }}
+    .ranking-list {{
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 20px;
+    }}
+    .form-intro {{
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px 14px;
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }}
+    .field-note {{
+      color: #6b7280;
+      font-size: 13px;
+      margin-top: 6px;
+    }}
+    .form-error {{
+      display: none;
+      margin-top: 14px;
+      color: #b91c1c;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 10px 12px;
     }}
     textarea, input, select {{
       width: 100%;
@@ -267,7 +470,7 @@ def page_layout(title: str, body: str) -> str:
       padding: 14px;
       border-radius: 10px;
       max-height: 520px;
-      overf轻度: auto;
+      overflow: auto;
     }}
   </style>
 </head>
@@ -380,22 +583,75 @@ def review_detail(script_id: str) -> HTMLResponse:
             """
         )
 
-    problem_tags_html = ""
-    for item in visual_data.get("problem_tag_distribution", []):
-        tag = item.get("tag", "")
-        level_value = item.get("level", "")
-        problem_tags_html += f'<span class="tag">{html.escape(str(tag))} / {html.escape(str(level_value))}</span>'
+    problem_tag_items = collect_problem_tag_items(visual_data)
+    problem_tags_html = "".join(
+        f'<span class="tag">{html.escape(item["tag"])}'
+        f'{" / " + html.escape(item["level"]) if item["level"] else ""}</span>'
+        for item in problem_tag_items
+    )
 
-    suggestions = visual_report.get("priority_suggestions", {})
+    suggestion_groups: Dict[str, List[str]] = {}
+    for item in collect_suggestions(visual_report):
+        suggestion_groups.setdefault(item["priority"], []).append(item["suggestion"])
+    priority_labels = {
+        "high": "high",
+        "medium": "medium",
+        "low": "low",
+        "严重": "严重",
+        "中等": "中等",
+        "轻度": "轻度",
+        "unknown": "未标注",
+    }
     suggestion_html = ""
-    for priority in ["严重", "中等", "轻度"]:
-        items = suggestions.get(priority, [])
-        suggestion_html += f"<h4>{priority}</h4><ul>"
+    for priority, items in suggestion_groups.items():
+        suggestion_html += f"<h4>{html.escape(priority_labels.get(priority, priority))}</h4><ul>"
         for item in items:
             suggestion_html += f"<li>{html.escape(str(item))}</li>"
         suggestion_html += "</ul>"
+    if not suggestion_html:
+        suggestion_html = '<p class="muted">暂无修改建议。</p>'
 
     raw_script_text = raw_script.get("script_text", "")
+    director_score_default = normalize_score(total_score, default=60)
+    feedback_problem_tags = collect_problem_tags(visual_data)
+    problem_tag_buttons_html = "".join(
+        f'<button type="button" class="toggle-button selected problem-tag-button" '
+        f'data-tag="{html.escape(tag, quote=True)}">{html.escape(tag)}</button>'
+        for tag in feedback_problem_tags
+    )
+    suggestion_review_items = collect_suggestions(visual_report)
+    suggestion_cards_html = ""
+    for index, item in enumerate(suggestion_review_items):
+        suggestion_cards_html += f"""
+        <div class="suggestion-card" data-suggestion-index="{index}">
+          <span class="priority-badge">{html.escape(item['priority'])}</span>
+          <p>{html.escape(item['suggestion'])}</p>
+          <div class="range-row">
+            <input type="range" min="0" max="10" value="5" class="suggestion-score"
+                   data-priority="{html.escape(item['priority'], quote=True)}"
+                   data-suggestion="{html.escape(item['suggestion'], quote=True)}">
+            <span class="range-value">5</span>
+          </div>
+          <p class="muted">0 = 没有帮助　5 = 有一定参考价值　10 = 非常有用，建议优先执行</p>
+        </div>
+        """
+    potential_options = [
+        "完播潜力",
+        "互动潜力",
+        "题材潜力",
+        "人物潜力",
+        "情绪爽感潜力",
+        "反转传播潜力",
+        "CP讨论潜力",
+        "制作落地潜力",
+        "修改提升潜力",
+        "暂时看不到明显潜力",
+    ]
+    potential_buttons_html = "".join(
+        f'<button type="button" class="toggle-button potential-button" '
+        f'data-potential="{html.escape(option, quote=True)}">{html.escape(option)}</button>'
+        for option in potential_options
+    )
 
     body = f"""
     <p><a href="/">← 返回列表</a></p>
@@ -464,62 +720,214 @@ def review_detail(script_id: str) -> HTMLResponse:
     </div>
 
     <div class="card">
-      <h3>轻量反馈表单</h3>
-      <form method="post" action="/feedback/{html.escape(script_id)}">
-        <label>评价人</label>
-        <input name="reviewer" placeholder="可填姓名或角色，例如：内容编辑A">
+      <h3>人工反馈表</h3>
+      <div class="form-intro">
+        请根据页面中的机器审核结果填写反馈，不需要填写姓名。重点判断：总分是否合理、问题标签是否准确、修改建议是否有用、剧本是否建议进入下一轮。所有反馈只用于校准机器审核系统。
+      </div>
+      <form id="feedback-form" method="post" action="/feedback/{html.escape(script_id)}">
+        <div class="feedback-section">
+          <h4>总分判断</h4>
+          <div class="machine-score-row">
+            <span>机器总分：{html.escape(str(total_score))}</span>
+            <span>机器等级：{html.escape(str(level))}</span>
+          </div>
 
-        <label>你觉得系统总分是否合理？</label>
-        <select name="score_judgement">
-          <option value="accurate">基本合理</option>
-          <option value="too_严重">偏高</option>
-          <option value="too_轻度">偏低</option>
-          <option value="unknown">不确定</option>
-        </select>
+          <label>系统总分是否合理？</label>
+          <div class="radio-grid">
+            <label><input type="radio" name="score_judgement" value="completely_reasonable" required>完全合理</label>
+            <label><input type="radio" name="score_judgement" value="basically_reasonable">基本合理</label>
+            <label><input type="radio" name="score_judgement" value="too_high">偏高</label>
+            <label><input type="radio" name="score_judgement" value="too_low">偏低</label>
+            <label><input type="radio" name="score_judgement" value="unreasonable">完全不合理</label>
+          </div>
 
-        <label>你觉得问题标签是否准确？</label>
-        <select name="tag_judgement">
-          <option value="mostly_correct">大部分准确</option>
-          <option value="partly_correct">部分准确</option>
-          <option value="mostly_wrong">大部分不准确</option>
-          <option value="unknown">不确定</option>
-        </select>
+          <label>导演建议分数</label>
+          <div class="range-row">
+            <input id="director-score" name="director_score" type="range" min="0" max="100" value="{director_score_default}" required>
+            <span id="director-score-value" class="range-value">{director_score_default}</span>
+          </div>
+          <p class="field-note">默认值会优先读取机器总分；如果机器总分缺失，则默认为 60。</p>
 
-        <label>你觉得修改建议是否有用？</label>
-        <select name="suggestion_judgement">
-          <option value="useful">有用</option>
-          <option value="partly_useful">部分有用</option>
-          <option value="not_useful">没什么用</option>
-          <option value="unknown">不确定</option>
-        </select>
+          <label>总分判断理由</label>
+          <textarea name="score_reason" rows="4" required placeholder="请说明你对总分的判断理由，例如：系统高估了反转设计、低估了人物关系张力、整体判断基本符合实际等。"></textarea>
+        </div>
 
-        <label>你认为这个剧本整体潜力是？</label>
-        <select name="potential_level">
-          <option value="严重">高</option>
-          <option value="中等_严重">中高</option>
-          <option value="中等">中</option>
-          <option value="中等_轻度">中低</option>
-          <option value="轻度">低</option>
-          <option value="unknown">不确定</option>
-        </select>
+        <div class="feedback-section">
+          <h4>问题标签判断</h4>
+          <p class="muted">默认高亮代表保留该标签。点击标签后变灰，表示你认为该标签不准确，不应保留。</p>
+          <div id="problem-tag-buttons">
+            {problem_tag_buttons_html or '<p class="muted">当前报告没有可判断的问题标签。</p>'}
+          </div>
+          <input type="hidden" name="accepted_tags_json" id="accepted-tags-json">
+          <input type="hidden" name="rejected_tags_json" id="rejected-tags-json">
 
-        <label>是否建议进入下一轮？</label>
-        <select name="final_decision">
-          <option value="promote">建议推进</option>
-          <option value="revise_then_promote">建议修改后推进</option>
-          <option value="major_revision">建议大改</option>
-          <option value="hold">暂缓</option>
-          <option value="unknown">不确定</option>
-        </select>
+          <label>你认为还应该补充哪些问题标签？</label>
+          <textarea name="added_problem_tags" rows="3"></textarea>
+        </div>
 
-        <label>哪些地方不准确？可选填</label>
-        <textarea name="inaccuracy_note" rows="4"></textarea>
+        <div class="feedback-section">
+          <h4>修改建议有用度</h4>
+          {suggestion_cards_html or '<p class="muted">当前报告没有可评分的修改建议。</p>'}
+          <input type="hidden" name="suggestion_scores_json" id="suggestion-scores-json">
+        </div>
 
-        <label>补充意见，可选填</label>
-        <textarea name="final_comment" rows="5"></textarea>
+        <div class="feedback-section">
+          <h4>剧本整体潜力</h4>
+          <div id="potential-buttons">
+            {potential_buttons_html}
+          </div>
+          <p class="ranking-list">已选择潜力排序：<span id="potential-ranking-text">暂无</span></p>
+          <input type="hidden" name="potential_ranking_json" id="potential-ranking-json">
+        </div>
 
+        <div class="feedback-section">
+          <h4>是否建议进入下一轮</h4>
+          <div class="radio-grid">
+            <label><input type="radio" name="next_round_decision" value="strong_next" required>强烈建议进入下一轮</label>
+            <label><input type="radio" name="next_round_decision" value="revise_then_next">建议修改后进入下一轮</label>
+            <label><input type="radio" name="next_round_decision" value="hold_major_revision">暂缓，需大改后再看</label>
+            <label><input type="radio" name="next_round_decision" value="not_recommended">不建议进入下一轮</label>
+            <label><input type="radio" name="next_round_decision" value="unknown">不确定，需要更多信息</label>
+          </div>
+        </div>
+
+        <div class="feedback-section">
+          <h4>人工说明</h4>
+          <label>机器判断中准确或不准确的地方</label>
+          <textarea name="accuracy_comment" rows="4" required placeholder="请说明机器判断中准确或不准确的地方。即使你认为基本合理，也可以写：分数、标签和建议基本符合实际。"></textarea>
+
+          <label>补充意见</label>
+          <textarea name="additional_comment" rows="5" required placeholder="请补充机器没有覆盖到的判断，例如题材风险、受众匹配、制作难度、人物问题、节奏问题等。"></textarea>
+        </div>
+
+        <div id="form-error" class="form-error"></div>
         <button type="submit">提交反馈</button>
       </form>
+      <script>
+        (function() {{
+          var directorScore = document.getElementById("director-score");
+          var directorScoreValue = document.getElementById("director-score-value");
+          var acceptedTagsInput = document.getElementById("accepted-tags-json");
+          var rejectedTagsInput = document.getElementById("rejected-tags-json");
+          var suggestionScoresInput = document.getElementById("suggestion-scores-json");
+          var potentialRankingInput = document.getElementById("potential-ranking-json");
+          var potentialRankingText = document.getElementById("potential-ranking-text");
+          var formError = document.getElementById("form-error");
+          var potentialRanking = [];
+
+          function syncDirectorScore() {{
+            directorScoreValue.textContent = directorScore.value;
+          }}
+
+          function syncTags() {{
+            var accepted = [];
+            var rejected = [];
+            document.querySelectorAll(".problem-tag-button").forEach(function(button) {{
+              if (button.classList.contains("rejected")) {{
+                rejected.push(button.dataset.tag);
+              }} else {{
+                accepted.push(button.dataset.tag);
+              }}
+            }});
+            acceptedTagsInput.value = JSON.stringify(accepted);
+            rejectedTagsInput.value = JSON.stringify(rejected);
+          }}
+
+          function syncSuggestions() {{
+            var scores = [];
+            document.querySelectorAll(".suggestion-score").forEach(function(slider) {{
+              var valueNode = slider.parentElement.querySelector(".range-value");
+              valueNode.textContent = slider.value;
+              scores.push({{
+                priority: slider.dataset.priority,
+                suggestion: slider.dataset.suggestion,
+                score: Number(slider.value)
+              }});
+            }});
+            suggestionScoresInput.value = JSON.stringify(scores);
+          }}
+
+          function syncPotentialRanking() {{
+            potentialRankingInput.value = JSON.stringify(potentialRanking);
+            if (potentialRanking.length === 0) {{
+              potentialRankingText.textContent = "暂无";
+              return;
+            }}
+            potentialRankingText.textContent = potentialRanking
+              .map(function(item, index) {{ return (index + 1) + ". " + item; }})
+              .join("  ");
+          }}
+
+          function validateForm() {{
+            var missing = [];
+            if (!document.querySelector('input[name="score_judgement"]:checked')) {{
+              missing.push("请选择系统总分是否合理");
+            }}
+            if (!directorScore.value) {{
+              missing.push("请填写导演建议分数");
+            }}
+            if (!document.querySelector('textarea[name="score_reason"]').value.trim()) {{
+              missing.push("请填写总分判断理由");
+            }}
+            if (!document.querySelector('input[name="next_round_decision"]:checked')) {{
+              missing.push("请选择是否建议进入下一轮");
+            }}
+            if (!document.querySelector('textarea[name="accuracy_comment"]').value.trim()) {{
+              missing.push("请填写机器判断中准确或不准确的地方");
+            }}
+            if (!document.querySelector('textarea[name="additional_comment"]').value.trim()) {{
+              missing.push("请填写补充意见");
+            }}
+            if (missing.length > 0) {{
+              formError.style.display = "block";
+              formError.textContent = missing.join("；");
+              return false;
+            }}
+            formError.style.display = "none";
+            formError.textContent = "";
+            return true;
+          }}
+
+          directorScore.addEventListener("input", syncDirectorScore);
+          document.querySelectorAll(".problem-tag-button").forEach(function(button) {{
+            button.addEventListener("click", function() {{
+              button.classList.toggle("selected");
+              button.classList.toggle("rejected");
+              syncTags();
+            }});
+          }});
+          document.querySelectorAll(".suggestion-score").forEach(function(slider) {{
+            slider.addEventListener("input", syncSuggestions);
+          }});
+          document.querySelectorAll(".potential-button").forEach(function(button) {{
+            button.addEventListener("click", function() {{
+              var value = button.dataset.potential;
+              var index = potentialRanking.indexOf(value);
+              if (index >= 0) {{
+                potentialRanking.splice(index, 1);
+                button.classList.remove("selected");
+              }} else {{
+                potentialRanking.push(value);
+                button.classList.add("selected");
+              }}
+              syncPotentialRanking();
+            }});
+          }});
+          document.getElementById("feedback-form").addEventListener("submit", function(event) {{
+            syncTags();
+            syncSuggestions();
+            syncPotentialRanking();
+            if (!validateForm()) {{
+              event.preventDefault();
+            }}
+          }});
+
+          syncDirectorScore();
+          syncTags();
+          syncSuggestions();
+          syncPotentialRanking();
+        }})();
+      </script>
     </div>
     """
     return HTMLResponse(page_layout(str(script_title), body))
@@ -528,35 +936,60 @@ def review_detail(script_id: str) -> HTMLResponse:
 @app.post("/feedback/{script_id}")
 def submit_feedback(
     script_id: str,
-    reviewer: str = Form(""),
-    score_judgement: str = Form("unknown"),
-    tag_judgement: str = Form("unknown"),
-    suggestion_judgement: str = Form("unknown"),
-    potential_level: str = Form("unknown"),
-    final_decision: str = Form("unknown"),
-    inaccuracy_note: str = Form(""),
-    final_comment: str = Form(""),
+    score_judgement: str = Form(""),
+    director_score: int = Form(60),
+    score_reason: str = Form(""),
+    accepted_tags_json: str = Form("[]"),
+    rejected_tags_json: str = Form("[]"),
+    added_problem_tags: str = Form(""),
+    suggestion_scores_json: str = Form("[]"),
+    potential_ranking_json: str = Form("[]"),
+    next_round_decision: str = Form(""),
+    accuracy_comment: str = Form(""),
+    additional_comment: str = Form(""),
 ) -> RedirectResponse:
     paths = get_paths()
     visual_report = load_visual_report(script_id)
     score_card = visual_report.get("visual_data", {}).get("score_card", {})
+    suggestion_scores = []
+    for item in parse_json_list(suggestion_scores_json):
+        if not isinstance(item, dict):
+            continue
+        suggestion_text = str(item.get("suggestion", "")).strip()
+        if not suggestion_text:
+            continue
+        suggestion_scores.append(
+            {
+                "priority": str(item.get("priority", "")),
+                "suggestion": suggestion_text,
+                "score": normalize_suggestion_score(item.get("score", 0)),
+            }
+        )
 
     feedback = {
         "script_id": script_id,
-        "script_title": score_card.get("script_title", ""),
-        "review_time": datetime.now().isoformat(timespec="seconds"),
-        "reviewer": reviewer,
-        "model_total_score": score_card.get("total_score"),
-        "model_level": score_card.get("level"),
-        "light_manual_feedback": {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "score_review": {
+            "machine_score": score_card.get("total_score"),
+            "machine_level": score_card.get("level"),
             "score_judgement": score_judgement,
-            "tag_judgement": tag_judgement,
-            "suggestion_judgement": suggestion_judgement,
-            "potential_level": potential_level,
-            "final_decision": final_decision,
-            "inaccuracy_note": inaccuracy_note,
-            "final_comment": final_comment,
+            "director_score": normalize_score(director_score),
+            "score_reason": score_reason,
         },
+        "problem_tag_review": {
+            "accepted_tags": parse_json_string_list(accepted_tags_json),
+            "rejected_tags": parse_json_string_list(rejected_tags_json),
+            "added_tags": added_problem_tags.strip(),
+        },
+        "suggestion_review": {
+            "suggestion_scores": suggestion_scores,
+        },
+        "potential_review": {
+            "potential_ranking": parse_json_string_list(potential_ranking_json),
+        },
+        "next_round_decision": next_round_decision.strip(),
+        "accuracy_comment": accuracy_comment.strip(),
+        "additional_comment": additional_comment.strip(),
     }
 
     feedback_dir = Path(paths["human_feedback_dir"])
