@@ -1,0 +1,71 @@
+{
+  "script_id": "",
+  "script_title": "",
+  "review_time": "",
+  "reviewer": "",
+  "feedback_source": "manual_or_business_data",
+  "model_provider": "",
+  "model_version": "",
+  "model_total_score": 0,
+  "model_level": "",
+  "light_manual_feedback": {
+    "score_judgement": "unknown",
+    "score_judgement_options": [
+      "accurate",
+      "too_high",
+      "too_low",
+      "unknown"
+    ],
+    "tag_judgement": "unknown",
+    "tag_judgement_options": [
+      "mostly_correct",
+      "partly_correct",
+      "mostly_wrong",
+      "unknown"
+    ],
+    "suggestion_judgement": "unknown",
+    "suggestion_judgement_options": [
+      "useful",
+      "partly_useful",
+      "not_useful",
+      "unknown"
+    ],
+    "final_comment": ""
+  },
+  "business_feedback": {
+    "is_launched": null,
+    "launch_platform": "",
+    "launch_date": "",
+    "relative_performance_level": "",
+    "relative_performance_options": [
+      "top",
+      "above_average",
+      "average",
+      "below_average",
+      "poor",
+      "unknown"
+    ],
+    "completion_rate": null,
+    "effective_play_rate": null,
+    "interaction_rate": null,
+    "like_rate": null,
+    "comment_rate": null,
+    "share_rate": null,
+    "collection_rate": null,
+    "follow_rate": null,
+    "promotion_budget_level": "",
+    "account_level": "",
+    "traffic_condition_note": ""
+  },
+  "model_correction_target": {
+    "should_keep_as_training_sample": true,
+    "sample_quality": "unknown",
+    "sample_quality_options": [
+      "high",
+      "medium",
+      "low",
+      "unknown"
+    ],
+    "reason": ""
+  }
+}
