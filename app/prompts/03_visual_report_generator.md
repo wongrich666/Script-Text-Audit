@@ -60,7 +60,34 @@
 
 不要使用代码块。
 
-输出 JSON 字段如下：
+强制输出要求：
+
+你必须只输出一个完整 JSON object。
+
+最外层必须包含：
+1. visual_data
+2. priority_suggestions
+3. text_report
+
+visual_data 内必须包含：
+1. score_card
+2. radar_chart
+3. bar_chart
+4. episode_pace_curve
+5. emotion_curve
+6. reversal_distribution
+7. problem_tag_distribution
+
+score_card 内必须包含：
+script_title、total_score、level、confidence、final_recommendation
+
+禁止只输出 episode_pace_curve 的某一项。
+禁止只输出单个 episode 对象。
+禁止只输出数组。
+禁止只输出局部 JSON。
+禁止因为剧本很长就省略 score_card、text_report 或可视化字段。
+
+输出 JSON 字段如下（直接在正文里面回复）：
 
 {
   "visual_data": {

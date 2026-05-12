@@ -3,6 +3,7 @@ import bleach
 import markdown
 import html
 import json
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -75,6 +76,52 @@ def load_markdown_report(script_id: str) -> str:
     if report_path.exists():
         return report_path.read_text(encoding="utf-8")
     return ""
+
+def move_to_trash(path: Path, trash_root: Path, script_id: str) -> None:
+    if not path.exists():
+        return
+
+    target_dir = trash_root / script_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    target_path = target_dir / path.name
+
+    if target_path.exists():
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        target_path = target_dir / f"{path.stem}_{stamp}{path.suffix}"
+
+    shutil.move(str(path), str(target_path))
+
+
+def archive_review_artifacts(script_id: str) -> list[str]:
+    paths = get_paths()
+    trash_root = Path(paths["data_root"]) / "trash"
+
+    candidates = [
+        Path(paths["raw_scripts_dir"]) / f"{script_id}.json",
+        Path(paths["parsed_features_dir"]) / f"{script_id}_features.json",
+        Path(paths["scoring_results_dir"]) / f"{script_id}_scores.json",
+        Path(paths["visual_data_dir"]) / f"{script_id}_visual_report.json",
+        Path(paths["reports_dir"]) / f"{script_id}_report.md",
+        Path(paths["training_samples_dir"]) / f"{script_id}_training_sample.json",
+    ]
+
+    debug_dir = Path(paths["data_root"]) / "debug_llm_responses"
+    if debug_dir.exists():
+        candidates.extend(debug_dir.glob(f"{script_id}_*"))
+
+    feedback_dir = Path(paths.get("human_feedback_dir", Path(paths["data_root"]) / "human_feedback"))
+    if feedback_dir.exists():
+        candidates.extend(feedback_dir.glob(f"{script_id}_*_feedback.json"))
+
+    moved: list[str] = []
+
+    for path in candidates:
+        if path.exists():
+            move_to_trash(path, trash_root, script_id)
+            moved.append(str(path))
+
+    return moved
 
 def render_markdown(markdown_text: str) -> str:
     raw_html = markdown.markdown(
@@ -265,6 +312,13 @@ def index() -> HTMLResponse:
               <td>{html.escape(str(level))}</td>
               <td>{html.escape(str(confidence))}</td>
               <td class="muted">{html.escape(script_id)}</td>
+              <td>
+                <a href="/review/{html.escape(script_id)}">查看审核 / 填写反馈</a>
+                <form method="post" action="/delete/{html.escape(script_id)}" style="display:inline;"
+                      onsubmit="return confirm('确定要归档删除这个审核结果吗？相关报告、可视化数据和反馈都会移到 trash。');">
+                  <button type="submit" style="background:#b91c1c;margin-left:8px;">删除</button>
+                </form>
+              </td>
             </tr>
             """
         )
@@ -281,10 +335,11 @@ def index() -> HTMLResponse:
             <th>等级</th>
             <th>置信度</th>
             <th>script_id</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
-          {''.join(rows) if rows else '<tr><td colspan="5">暂无审核结果。</td></tr>'}
+          {''.join(rows) if rows else '<tr><td colspan="6">暂无审核结果。</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -509,3 +564,8 @@ def submit_feedback(
     save_json(feedback_path, feedback)
 
     return RedirectResponse(url=f"/review/{script_id}", status_code=303)
+
+@app.post("/delete/{script_id}")
+def delete_review(script_id: str) -> RedirectResponse:
+    archive_review_artifacts(script_id)
+    return RedirectResponse(url="/", status_code=303)
