@@ -56,9 +56,9 @@
     }
   ],
   "priority_suggestions": {
-    "high": [],
-    "medium": [],
-    "low": []
+    "严重": [],
+    "中等": [],
+    "轻度": []
   },
   "text_report": ""
 }

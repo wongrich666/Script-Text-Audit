@@ -327,9 +327,9 @@ def mock_score_script(
 
     selected_problem_tags = [
         {
-            "key": "slow_middle",
+            "key": "s轻度_middle",
             "name": "中段拖沓",
-            "level": "high",
+            "level": "严重",
             "description": "第5-6集主线推进效率下降，解释性内容增加。",
             "evidence": "第6集主要集中在解释过去公司斗争，冲突略弱。",
             "suggestion": "将旧案信息放入对抗事件中呈现，并增加一次中段反转。"
@@ -337,7 +337,7 @@ def mock_score_script(
         {
             "key": "weak_antagonist_motivation",
             "name": "反派动机不足",
-            "level": "medium",
+            "level": "中等",
             "description": "反派压迫行为明确，但利益动机还可以进一步具体化。",
             "evidence": "林悦和沈舟争夺资源，但具体利益链条可再加强。",
             "suggestion": "补充林悦和沈舟必须打压林晚的具体利益原因。"
@@ -345,7 +345,7 @@ def mock_score_script(
         {
             "key": "excessive_exposition",
             "name": "台词解释过多",
-            "level": "medium",
+            "level": "中等",
             "description": "旧案和公司斗争信息可能依赖解释性对白。",
             "evidence": "第6集剧情主要集中在解释过去公司斗争。",
             "suggestion": "减少口头说明，用证据、行动和冲突推进信息揭露。"
@@ -382,15 +382,15 @@ def mock_score_script(
             "同质化风险"
         ],
         "priority_suggestions": {
-            "high": [
+            "严重": [
                 "优化第5-6集主线推进，减少解释性内容。",
                 "为第6集增加一次小反转或强钩子。"
             ],
-            "medium": [
+            "中等": [
                 "补充林悦和沈舟的具体利益动机。",
                 "增加顾沉与林晚的信任冲突。"
             ],
-            "low": [
+            "轻度": [
                 "优化旧案说明部分台词。",
                 "增加1-2句更具传播性的短剧金句。"
             ]
@@ -511,9 +511,9 @@ def build_visual_report(parsed: Dict[str, Any], scoring: Dict[str, Any]) -> Dict
             "strengths": scoring["strengths"],
             "weaknesses": scoring["weaknesses"],
             "suggestions": (
-                scoring["priority_suggestions"]["high"]
-                + scoring["priority_suggestions"]["medium"]
-                + scoring["priority_suggestions"]["low"]
+                scoring["priority_suggestions"]["严重"]
+                + scoring["priority_suggestions"]["中等"]
+                + scoring["priority_suggestions"]["轻度"]
             ),
             "risks": scoring["risk_flags"],
             "final_conclusion": scoring["summary"]["final_recommendation"]

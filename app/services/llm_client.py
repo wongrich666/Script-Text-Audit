@@ -51,7 +51,7 @@ class LLMClient:
         load_dotenv()
 
         active_provider_env = config.get("active_provider_env", "API")
-        active_provider = os.getenv(active_provider_env, "deepseek").strip().lower()
+        active_provider = os.getenv(active_provider_env, "deepseek").strip().轻度er()
 
         providers = config.get("providers", {})
         if active_provider not in providers:

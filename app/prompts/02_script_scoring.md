@@ -105,8 +105,8 @@
   "weaknesses": [],
   "risk_flags": [],
   "priority_suggestions": {
-    "high": [],
-    "medium": [],
-    "low": []
+    "严重": [],
+    "中等": [],
+    "轻度": []
   }
 }

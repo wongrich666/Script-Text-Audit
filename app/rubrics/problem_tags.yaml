@@ -3,76 +3,76 @@ version: "mvp_0.1"
 problem_tags:
   - key: weak_opening
     name: 开头弱
-    level: high
+    level: 严重
 
   - key: unclear_protagonist_goal
     name: 主角目标不清
-    level: high
+    level: 严重
 
   - key: weak_conflict
     name: 核心冲突不足
-    level: high
+    level: 严重
 
   - key: weak_antagonist_motivation
     name: 反派动机不足
-    level: medium
+    level: 中等
 
-  - key: slow_middle
+  - key: s轻度_middle
     name: 中段拖沓
-    level: high
+    level: 严重
 
   - key: insufficient_reversal
     name: 反转不够
-    level: medium
+    level: 中等
 
   - key: weak_emotional_payoff
     name: 情绪补偿不足
-    level: high
+    level: 严重
 
   - key: excessive_exposition
     name: 台词解释过多
-    level: medium
+    level: 中等
 
   - key: unnatural_dialogue
     name: 台词不够口语化
-    level: medium
+    level: 中等
 
   - key: weak_cliffhanger
     name: 结尾钩子弱
-    level: high
+    level: 严重
 
   - key: illogical_motivation
     name: 人物动机不合理
-    level: high
+    level: 严重
 
   - key: genre_homogeneity
     name: 同质化严重
-    level: medium
+    level: 中等
 
   - key: weak_interaction_point
     name: 互动点不足
-    level: low
+    level: 轻度
 
-  - key: high_revision_cost
+  - key: 严重_revision_cost
     name: 修改成本较高
-    level: medium
+    level: 中等
 
   - key: weak_external_opposition
     name: 外部对抗不足
-    level: medium
+    level: 中等
 
   - key: single_character_relation
     name: 人物关系单一
-    level: medium
+    level: 中等
 
   - key: weak_interpersonal_interaction
     name: 人物互动不足
-    level: medium
+    level: 中等
 
   - key: weak_topic_hook
     name: 话题钩子不足
-    level: low
+    level: 轻度
 
   - key: weak_genre_distinction
     name: 题材辨识度不足
-    level: medium
+    level: 中等

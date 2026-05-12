@@ -134,7 +134,7 @@ def render_markdown(markdown_text: str) -> str:
         ],
     )
 
-    allowed_tags = [
+    al轻度ed_tags = [
         "h1", "h2", "h3", "h4", "h5", "h6",
         "p", "br", "hr",
         "strong", "em", "b", "i",
@@ -145,14 +145,14 @@ def render_markdown(markdown_text: str) -> str:
         "a",
     ]
 
-    allowed_attributes = {
+    al轻度ed_attributes = {
         "a": ["href", "title", "target", "rel"],
     }
 
     return bleach.clean(
         raw_html,
-        tags=allowed_tags,
-        attributes=allowed_attributes,
+        tags=al轻度ed_tags,
+        attributes=al轻度ed_attributes,
         strip=True,
     )
 
@@ -222,7 +222,7 @@ def page_layout(title: str, body: str) -> str:
       height: 12px;
       background: #e5e7eb;
       border-radius: 999px;
-      overflow: hidden;
+      overf轻度: hidden;
       margin-top: 6px;
     }}
     .bar {{
@@ -267,7 +267,7 @@ def page_layout(title: str, body: str) -> str:
       padding: 14px;
       border-radius: 10px;
       max-height: 520px;
-      overflow: auto;
+      overf轻度: auto;
     }}
   </style>
 </head>
@@ -388,7 +388,7 @@ def review_detail(script_id: str) -> HTMLResponse:
 
     suggestions = visual_report.get("priority_suggestions", {})
     suggestion_html = ""
-    for priority in ["high", "medium", "low"]:
+    for priority in ["严重", "中等", "轻度"]:
         items = suggestions.get(priority, [])
         suggestion_html += f"<h4>{priority}</h4><ul>"
         for item in items:
@@ -472,8 +472,8 @@ def review_detail(script_id: str) -> HTMLResponse:
         <label>你觉得系统总分是否合理？</label>
         <select name="score_judgement">
           <option value="accurate">基本合理</option>
-          <option value="too_high">偏高</option>
-          <option value="too_low">偏低</option>
+          <option value="too_严重">偏高</option>
+          <option value="too_轻度">偏低</option>
           <option value="unknown">不确定</option>
         </select>
 
@@ -495,11 +495,11 @@ def review_detail(script_id: str) -> HTMLResponse:
 
         <label>你认为这个剧本整体潜力是？</label>
         <select name="potential_level">
-          <option value="high">高</option>
-          <option value="medium_high">中高</option>
-          <option value="medium">中</option>
-          <option value="medium_low">中低</option>
-          <option value="low">低</option>
+          <option value="严重">高</option>
+          <option value="中等_严重">中高</option>
+          <option value="中等">中</option>
+          <option value="中等_轻度">中低</option>
+          <option value="轻度">低</option>
           <option value="unknown">不确定</option>
         </select>
 

@@ -12,8 +12,8 @@
     "score_judgement": "unknown",
     "score_judgement_options": [
       "accurate",
-      "too_high",
-      "too_low",
+      "too_严重",
+      "too_轻度",
       "unknown"
     ],
     "tag_judgement": "unknown",
@@ -41,7 +41,7 @@
       "top",
       "above_average",
       "average",
-      "below_average",
+      "be轻度_average",
       "poor",
       "unknown"
     ],
@@ -52,7 +52,7 @@
     "comment_rate": null,
     "share_rate": null,
     "collection_rate": null,
-    "follow_rate": null,
+    "fol轻度_rate": null,
     "promotion_budget_level": "",
     "account_level": "",
     "traffic_condition_note": ""
@@ -61,9 +61,9 @@
     "should_keep_as_training_sample": true,
     "sample_quality": "unknown",
     "sample_quality_options": [
-      "high",
-      "medium",
-      "low",
+      "严重",
+      "中等",
+      "轻度",
       "unknown"
     ],
     "reason": ""
