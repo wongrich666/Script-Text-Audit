@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+import bleach
+import markdown
 import html
 import json
 from datetime import datetime
@@ -75,6 +76,38 @@ def load_markdown_report(script_id: str) -> str:
         return report_path.read_text(encoding="utf-8")
     return ""
 
+def render_markdown(markdown_text: str) -> str:
+    raw_html = markdown.markdown(
+        markdown_text or "",
+        extensions=[
+            "extra",
+            "tables",
+            "nl2br",
+            "sane_lists",
+        ],
+    )
+
+    allowed_tags = [
+        "h1", "h2", "h3", "h4", "h5", "h6",
+        "p", "br", "hr",
+        "strong", "em", "b", "i",
+        "ul", "ol", "li",
+        "blockquote",
+        "code", "pre",
+        "table", "thead", "tbody", "tr", "th", "td",
+        "a",
+    ]
+
+    allowed_attributes = {
+        "a": ["href", "title", "target", "rel"],
+    }
+
+    return bleach.clean(
+        raw_html,
+        tags=allowed_tags,
+        attributes=allowed_attributes,
+        strip=True,
+    )
 
 def page_layout(title: str, body: str) -> str:
     return f"""
@@ -264,6 +297,7 @@ def review_detail(script_id: str) -> HTMLResponse:
     visual_report = load_visual_report(script_id)
     raw_script = load_raw_script(script_id)
     markdown_report = load_markdown_report(script_id)
+    rendered_markdown_report = render_markdown(markdown_report)
 
     visual_data = visual_report.get("visual_data", {})
     score_card = visual_data.get("score_card", {})
@@ -368,8 +402,10 @@ def review_detail(script_id: str) -> HTMLResponse:
     </div>
 
     <div class="card">
-      <h3>Markdown 报告</h3>
-      <pre>{html.escape(markdown_report[:12000])}</pre>
+      <h3>审核报告</h3>
+      <div class="markdown-body">
+        {rendered_markdown_report}
+      </div>
     </div>
 
     <div class="card">
