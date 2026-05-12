@@ -167,6 +167,19 @@ def collect_suggestions(visual_report: Dict[str, Any]) -> List[Dict[str, str]]:
     return suggestions
 
 
+def display_priority_label(priority: str) -> str:
+    priority_map = {
+        "high": "严重",
+        "medium": "中等",
+        "low": "轻度",
+        "严重": "严重",
+        "中等": "中等",
+        "轻度": "轻度",
+        "unknown": "未标注",
+    }
+    return priority_map.get(str(priority), str(priority))
+
+
 def move_to_trash(path: Path, trash_root: Path, script_id: str) -> None:
     if not path.exists():
         return
@@ -418,6 +431,44 @@ def page_layout(title: str, body: str) -> str:
       padding: 10px;
       min-height: 20px;
     }}
+    .chip-input-wrap {{
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px;
+    }}
+    .chip-list {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }}
+    .chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #eef2ff;
+      color: #1d4ed8;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+    }}
+    .chip-remove {{
+      border: none;
+      background: transparent;
+      color: #1d4ed8;
+      cursor: pointer;
+      margin: 0;
+      padding: 0;
+      font-size: 14px;
+      line-height: 1;
+    }}
+    .chip-input {{
+      border: none;
+      padding: 4px 2px;
+      outline: none;
+      width: 100%;
+    }}
     .form-intro {{
       background: #f9fafb;
       border: 1px solid #e5e7eb;
@@ -622,9 +673,10 @@ def review_detail(script_id: str) -> HTMLResponse:
     suggestion_review_items = collect_suggestions(visual_report)
     suggestion_cards_html = ""
     for index, item in enumerate(suggestion_review_items):
+        priority_label = display_priority_label(item["priority"])
         suggestion_cards_html += f"""
         <div class="suggestion-card" data-suggestion-index="{index}">
-          <span class="priority-badge">{html.escape(item['priority'])}</span>
+          <span class="priority-badge">{html.escape(priority_label)}</span>
           <p>{html.escape(item['suggestion'])}</p>
           <div class="range-row">
             <input type="range" min="0" max="10" value="5" class="suggestion-score"
@@ -762,7 +814,12 @@ def review_detail(script_id: str) -> HTMLResponse:
           <input type="hidden" name="rejected_tags_json" id="rejected-tags-json">
 
           <label>你认为还应该补充哪些问题标签？</label>
-          <textarea name="added_problem_tags" rows="3"></textarea>
+          <div class="chip-input-wrap">
+            <div id="added-tag-chip-list" class="chip-list"></div>
+            <input type="text" id="added-tag-input" class="chip-input" placeholder="以 / 开头并用 / 分隔，例如：/CP张力不足/人物目标不清">
+          </div>
+          <p class="field-note">请用 / 作为开头和分隔符；每输入一个 /，前面的内容会自动识别为一个标签。</p>
+          <input type="hidden" name="added_problem_tags" id="added-problem-tags">
         </div>
 
         <div class="feedback-section">
@@ -783,11 +840,9 @@ def review_detail(script_id: str) -> HTMLResponse:
         <div class="feedback-section">
           <h4>是否建议进入下一轮</h4>
           <div class="radio-grid">
-            <label><input type="radio" name="next_round_decision" value="strong_next" required>强烈建议进入下一轮</label>
-            <label><input type="radio" name="next_round_decision" value="revise_then_next">建议修改后进入下一轮</label>
-            <label><input type="radio" name="next_round_decision" value="hold_major_revision">暂缓，需大改后再看</label>
-            <label><input type="radio" name="next_round_decision" value="not_recommended">不建议进入下一轮</label>
-            <label><input type="radio" name="next_round_decision" value="unknown">不确定，需要更多信息</label>
+            <label><input type="radio" name="next_round_decision" value="no_revision_next_round" required>无需修改可以进入</label>
+            <label><input type="radio" name="next_round_decision" value="revise_not_recommended">需要修改不建议进入</label>
+            <label><input type="radio" name="next_round_decision" value="major_revision_stop">需要大改不要进入</label>
           </div>
         </div>
 
@@ -812,8 +867,12 @@ def review_detail(script_id: str) -> HTMLResponse:
           var suggestionScoresInput = document.getElementById("suggestion-scores-json");
           var potentialRankingInput = document.getElementById("potential-ranking-json");
           var potentialRankingText = document.getElementById("potential-ranking-text");
+          var addedTagInput = document.getElementById("added-tag-input");
+          var addedTagChipList = document.getElementById("added-tag-chip-list");
+          var addedProblemTagsInput = document.getElementById("added-problem-tags");
           var formError = document.getElementById("form-error");
           var potentialRanking = [];
+          var addedTags = [];
 
           function syncDirectorScore() {{
             directorScoreValue.textContent = directorScore.value;
@@ -858,6 +917,40 @@ def review_detail(script_id: str) -> HTMLResponse:
               .join("  ");
           }}
 
+          function syncAddedTags() {{
+            addedProblemTagsInput.value = addedTags.length > 0 ? "/" + addedTags.join("/") : "";
+            addedTagChipList.innerHTML = "";
+            addedTags.forEach(function(tag, index) {{
+              var chip = document.createElement("span");
+              chip.className = "chip";
+              chip.textContent = tag;
+
+              var removeButton = document.createElement("button");
+              removeButton.type = "button";
+              removeButton.className = "chip-remove";
+              removeButton.textContent = "×";
+              removeButton.setAttribute("aria-label", "删除标签");
+              removeButton.addEventListener("click", function() {{
+                addedTags.splice(index, 1);
+                syncAddedTags();
+              }});
+
+              chip.appendChild(removeButton);
+              addedTagChipList.appendChild(chip);
+            }});
+          }}
+
+          function commitAddedTag(rawValue) {{
+            var tag = (rawValue || "").trim();
+            if (!tag) {{
+              return;
+            }}
+            if (!addedTags.includes(tag)) {{
+              addedTags.push(tag);
+            }}
+            syncAddedTags();
+          }}
+
           function validateForm() {{
             var missing = [];
             if (!document.querySelector('input[name="score_judgement"]:checked')) {{
@@ -889,6 +982,29 @@ def review_detail(script_id: str) -> HTMLResponse:
           }}
 
           directorScore.addEventListener("input", syncDirectorScore);
+          addedTagInput.addEventListener("input", function() {{
+            var parts = addedTagInput.value.split("/");
+            if (parts.length > 1) {{
+              for (var i = 0; i < parts.length - 1; i += 1) {{
+                commitAddedTag(parts[i]);
+              }}
+              addedTagInput.value = parts[parts.length - 1];
+            }}
+          }});
+          addedTagInput.addEventListener("keydown", function(event) {{
+            if (event.key === "Enter") {{
+              event.preventDefault();
+              commitAddedTag(addedTagInput.value);
+              addedTagInput.value = "";
+            }} else if (event.key === "Backspace" && !addedTagInput.value && addedTags.length > 0) {{
+              addedTags.pop();
+              syncAddedTags();
+            }}
+          }});
+          addedTagInput.addEventListener("blur", function() {{
+            commitAddedTag(addedTagInput.value);
+            addedTagInput.value = "";
+          }});
           document.querySelectorAll(".problem-tag-button").forEach(function(button) {{
             button.addEventListener("click", function() {{
               button.classList.toggle("selected");
@@ -917,6 +1033,10 @@ def review_detail(script_id: str) -> HTMLResponse:
             syncTags();
             syncSuggestions();
             syncPotentialRanking();
+            if (addedTagInput.value.trim()) {{
+              commitAddedTag(addedTagInput.value);
+              addedTagInput.value = "";
+            }}
             if (!validateForm()) {{
               event.preventDefault();
             }}
@@ -926,6 +1046,7 @@ def review_detail(script_id: str) -> HTMLResponse:
           syncTags();
           syncSuggestions();
           syncPotentialRanking();
+          syncAddedTags();
         }})();
       </script>
     </div>

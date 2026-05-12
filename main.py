@@ -64,7 +64,7 @@ def print_access_urls(port: int) -> None:
 
 
 def main() -> None:
-    port = 8000
+    port = 8001
     print_access_urls(port)
 
     uvicorn.run(
