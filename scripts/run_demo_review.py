@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,13 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+from app.services.tencent_video_data.report_integration import append_market_feedback_section
+
 PATHS_FILE = PROJECT_ROOT / "configs" / "paths.yaml"
 RUBRIC_FILE = PROJECT_ROOT / "app" / "rubrics" / "script_text_review_rubric.yaml"
 PROBLEM_TAGS_FILE = PROJECT_ROOT / "app" / "rubrics" / "problem_tags.yaml"
@@ -585,7 +593,10 @@ def main() -> None:
     parsed = mock_parse_script(script_title, DEMO_SCRIPT)
     scoring = mock_score_script(parsed, rubric, problem_tags)
     visual_report = build_visual_report(parsed, scoring)
-    markdown_report = build_markdown_report(visual_report)
+    markdown_report = append_market_feedback_section(
+        build_markdown_report(visual_report),
+        PROJECT_ROOT / "data" / "tencent_video_normalized" / "market_feedback_summary.json",
+    )
 
     raw_scripts_dir = Path(paths["raw_scripts_dir"])
     parsed_features_dir = Path(paths["parsed_features_dir"])

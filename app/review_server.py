@@ -816,9 +816,8 @@ def review_detail(script_id: str) -> HTMLResponse:
           <label>你认为还应该补充哪些问题标签？</label>
           <div class="chip-input-wrap">
             <div id="added-tag-chip-list" class="chip-list"></div>
-            <input type="text" id="added-tag-input" class="chip-input" placeholder="以 / 开头并用 / 分隔，例如：/CP张力不足/人物目标不清">
+            <input type="text" id="added-tag-input" class="chip-input" placeholder="请以“/”作为标签分隔，例如：/CP张力不足/人物目标不清">
           </div>
-          <p class="field-note">请用 / 作为开头和分隔符；每输入一个 /，前面的内容会自动识别为一个标签。</p>
           <input type="hidden" name="added_problem_tags" id="added-problem-tags">
         </div>
 

@@ -6,12 +6,15 @@ __pycache__/
 .DS_Store
 
 data/
+data/tencent_video_exports/
+data/tencent_video_normalized/
+data/tencent_video_auth/
 outputs/
 temp/
 
+*.xlsx
 *.sqlite3
 *.db
 .idea/
 .vscode/
-
 *.key
