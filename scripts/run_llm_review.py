@@ -20,6 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.services.input_reader import read_script_input
 from app.services.json_utils import extract_json
 from app.services.llm_client import LLMClient
+from app.services.tencent_video_data.report_integration import append_market_feedback_section
 
 
 PATHS_FILE = PROJECT_ROOT / "configs" / "paths.yaml"
@@ -463,7 +464,10 @@ def main() -> None:
 
         validate_visual_report_schema(visual_report)
 
-    markdown_report = build_markdown_report(visual_report)
+    markdown_report = append_market_feedback_section(
+        build_markdown_report(visual_report),
+        PROJECT_ROOT / "data" / "tencent_video_normalized" / "market_feedback_summary.json",
+    )
 
     save_json(Path(paths["raw_scripts_dir"]) / f"{script_id}.json", raw_script_record)
     save_json(Path(paths["parsed_features_dir"]) / f"{script_id}_features.json", parsed_features)
