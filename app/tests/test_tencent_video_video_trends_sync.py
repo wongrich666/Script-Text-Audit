@@ -13,6 +13,8 @@ from scripts.sync_tencent_video_video_trends import (
     find_video_item_in_drawer,
     filter_titles_by_pattern,
     find_visible_download_button,
+    get_current_video_title,
+    verify_current_video_title,
     _download_current_video,
     _click_switch_video,
     _switch_to_video,
@@ -21,11 +23,24 @@ from scripts.sync_tencent_video_video_trends import (
 
 
 class FakeDrawerItem:
-    def __init__(self, text: str, visible: bool, has_button: bool = True) -> None:
+    def __init__(
+        self,
+        text: str,
+        visible: bool,
+        has_button: bool = True,
+        *,
+        button_visible: bool = True,
+        reveal_button_on_hover: bool = False,
+        current: bool = False,
+    ) -> None:
         self.text = text
         self.visible = visible
         self.has_button = has_button
+        self.button_visible = button_visible
+        self.reveal_button_on_hover = reveal_button_on_hover
+        self.current = current
         self.clicked = False
+        self.hovered = False
 
     def is_visible(self, timeout: int = 0) -> bool:
         return self.visible
@@ -39,10 +54,28 @@ class FakeDrawerItem:
     def scroll_into_view_if_needed(self, timeout: int = 0) -> None:
         return None
 
-    def evaluate(self, script: str) -> None:
-        if not self.has_button:
-            raise RuntimeError("no button")
+    def hover(self, timeout: int = 0) -> None:
+        self.hovered = True
+
+    def click(self, *args: object, **kwargs: object) -> None:
         self.clicked = True
+
+    def inner_text(self, timeout: int = 0) -> str:
+        suffix = " 当前" if self.current else ""
+        return f"{self.text}{suffix}"
+
+    def evaluate(self, script: str) -> str | None:
+        if "querySelectorAll" in script:
+            if not self.has_button:
+                raise RuntimeError("no button")
+            self.clicked = True
+            return None
+        if "node.click()" in script:
+            self.clicked = True
+            return None
+        if "innerText" in script or "textContent" in script:
+            return self.inner_text()
+        return self.inner_text()
 
 
 class FakeButton:
@@ -50,7 +83,8 @@ class FakeButton:
         self.item = item
 
     def is_visible(self, timeout: int = 0) -> bool:
-        return self.item.visible and self.item.has_button
+        button_visible = self.item.button_visible or (self.item.reveal_button_on_hover and self.item.hovered)
+        return self.item.visible and self.item.has_button and button_visible
 
     def click(self, *args: object, **kwargs: object) -> None:
         if not self.is_visible():
@@ -115,6 +149,9 @@ class FakeDrawerPage:
         if "drawer" in selector:
             return FakeDrawerLocator(self.drawer)
         return FakeDrawerLocator(None)
+
+    def wait_for_timeout(self, timeout: int) -> None:
+        return None
 
 
 class TencentVideoVideoTrendsSyncTests(unittest.TestCase):
@@ -245,16 +282,357 @@ class TencentVideoVideoTrendsSyncTests(unittest.TestCase):
         self.assertTrue(visible.clicked)
         self.assertEqual(warnings, [])
 
-    def test_missing_visible_switch_button_returns_warning(self) -> None:
+    def test_target_item_without_switch_button_clicks_item_itself(self) -> None:
         item = FakeDrawerItem("SJS_30", visible=True, has_button=False)
         page = FakeDrawerPage([item])
         warnings: list[str] = []
 
         switched = _switch_to_video(page, "SJS_30", timeout_ms=100, warnings=warnings)
 
-        self.assertFalse(switched)
+        self.assertTrue(switched)
+        self.assertTrue(item.clicked)
+        self.assertEqual(warnings, [])
+
+    def test_current_item_without_switch_button_is_success(self) -> None:
+        item = FakeDrawerItem("SJS_30", visible=True, has_button=False, current=True)
+        page = FakeDrawerPage([item])
+        warnings: list[str] = []
+
+        switched = _switch_to_video(page, "SJS_30", timeout_ms=100, warnings=warnings)
+
+        self.assertTrue(switched)
         self.assertFalse(item.clicked)
-        self.assertTrue(any("未找到“切换”按钮" in warning for warning in warnings))
+        self.assertEqual(warnings, [])
+
+    def test_target_item_switch_button_visible_after_hover_is_clicked(self) -> None:
+        item = FakeDrawerItem("SJS_27", visible=True, has_button=True, button_visible=False, reveal_button_on_hover=True)
+        page = FakeDrawerPage([item])
+        warnings: list[str] = []
+
+        switched = _switch_to_video(page, "SJS_27", timeout_ms=100, warnings=warnings)
+
+        self.assertTrue(switched)
+        self.assertTrue(item.hovered)
+        self.assertTrue(item.clicked)
+        self.assertEqual(warnings, [])
+
+    def test_target_item_hidden_switch_button_uses_dom_evaluate(self) -> None:
+        item = FakeDrawerItem("SJS_27", visible=True, has_button=True, button_visible=False)
+        page = FakeDrawerPage([item])
+        warnings: list[str] = []
+
+        switched = _switch_to_video(page, "SJS_27", timeout_ms=100, warnings=warnings)
+
+        self.assertTrue(switched)
+        self.assertTrue(item.hovered)
+        self.assertTrue(item.clicked)
+        self.assertEqual(warnings, [])
+
+    def test_missing_target_video_item_does_not_click_first_visible_item(self) -> None:
+        first = FakeDrawerItem("SJS_01", visible=True, has_button=True)
+        page = FakeDrawerPage([first])
+        warnings: list[str] = []
+
+        switched = _switch_to_video(page, "SJS_99", timeout_ms=100, warnings=warnings)
+
+        self.assertFalse(switched)
+        self.assertFalse(first.clicked)
+        self.assertTrue(any("未找到包含目标 title" in warning for warning in warnings))
+
+    def test_download_button_can_be_found_in_page_detail_module(self) -> None:
+        class FakeDownloadButton:
+            def __init__(self, visible: bool) -> None:
+                self.visible = visible
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return self.visible
+
+            def evaluate(self, script: str) -> dict[str, str]:
+                return {"className": "downloadButton___abc", "text": "下载数据"}
+
+        class FakeDownloadLocator:
+            def __init__(self, buttons: list[FakeDownloadButton]) -> None:
+                self.buttons = buttons
+
+            def filter(self, has_text: str) -> "FakeDownloadLocator":
+                return self
+
+            def count(self) -> int:
+                return len(self.buttons)
+
+            def nth(self, index: int) -> FakeDownloadButton:
+                return self.buttons[index]
+
+        class FakeScope:
+            def __init__(self, buttons: list[FakeDownloadButton]) -> None:
+                self.buttons = buttons
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return True
+
+            def locator(self, selector: str) -> FakeDownloadLocator:
+                return FakeDownloadLocator(self.buttons)
+
+        class FakeScopeLocator:
+            def __init__(self, scopes: list[FakeScope]) -> None:
+                self.scopes = scopes
+
+            def filter(self, has_text: str) -> "FakeScopeLocator":
+                return self
+
+            def count(self) -> int:
+                return len(self.scopes)
+
+            def nth(self, index: int) -> FakeScope:
+                return self.scopes[index]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.button = FakeDownloadButton(True)
+                self.scope = FakeScope([self.button])
+
+            def locator(self, selector: str) -> FakeScopeLocator:
+                if "detailModule" in selector:
+                    return FakeScopeLocator([self.scope])
+                return FakeScopeLocator([])
+
+        page = FakePage()
+
+        self.assertIs(find_visible_download_button(page, "SJS_17"), page.button)
+
+    def test_hidden_page_download_button_is_not_selected(self) -> None:
+        class FakeDownloadButton:
+            def is_visible(self, timeout: int = 0) -> bool:
+                return False
+
+            def evaluate(self, script: str) -> dict[str, str]:
+                return {"className": "downloadButton___abc", "text": "下载数据"}
+
+        class FakeDownloadLocator:
+            def __init__(self, buttons: list[FakeDownloadButton]) -> None:
+                self.buttons = buttons
+
+            def filter(self, has_text: str) -> "FakeDownloadLocator":
+                return self
+
+            def count(self) -> int:
+                return len(self.buttons)
+
+            def nth(self, index: int) -> FakeDownloadButton:
+                return self.buttons[index]
+
+        class FakeScope:
+            def __init__(self) -> None:
+                self.buttons = [FakeDownloadButton()]
+
+            def locator(self, selector: str) -> FakeDownloadLocator:
+                return FakeDownloadLocator(self.buttons)
+
+        class FakeScopeLocator:
+            def __init__(self, scopes: list[FakeScope]) -> None:
+                self.scopes = scopes
+
+            def filter(self, has_text: str) -> "FakeScopeLocator":
+                return self
+
+            def count(self) -> int:
+                return len(self.scopes)
+
+            def nth(self, index: int) -> FakeScope:
+                return self.scopes[index]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.scope = FakeScope()
+
+            def locator(self, selector: str) -> FakeScopeLocator:
+                if "detailModule" in selector:
+                    return FakeScopeLocator([self.scope])
+                return FakeScopeLocator([])
+
+        self.assertIsNone(find_visible_download_button(FakePage(), "SJS_17"))
+
+    def test_current_title_mismatch_skips_download(self) -> None:
+        class FakeTitleItem:
+            def is_visible(self, timeout: int = 0) -> bool:
+                return True
+
+            def inner_text(self, timeout: int = 0) -> str:
+                return "SJS_28"
+
+        class FakeTitleLocator:
+            first = None
+
+            def __init__(self) -> None:
+                self.first = self
+
+            def count(self) -> int:
+                return 1
+
+            def nth(self, index: int) -> FakeTitleItem:
+                return FakeTitleItem()
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return False
+
+        class FakePage:
+            def locator(self, selector: str) -> FakeTitleLocator:
+                return FakeTitleLocator()
+
+            def get_by_text(self, *args: object, **kwargs: object) -> FakeTitleLocator:
+                return FakeTitleLocator()
+
+        warnings: list[str] = []
+
+        self.assertFalse(verify_current_video_title(FakePage(), "SJS_27", warnings))
+        self.assertTrue(any("与目标不一致" in warning for warning in warnings))
+
+    def test_current_title_ignores_duration_and_selects_video_title(self) -> None:
+        class FakeTitleItem:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return True
+
+            def inner_text(self, timeout: int = 0) -> str:
+                return self.text
+
+        class FakeTitleLocator:
+            def __init__(self, texts: list[str]) -> None:
+                self.items = [FakeTitleItem(text) for text in texts]
+
+            def filter(self, has_text: str) -> "FakeTitleLocator":
+                return FakeTitleLocator([item.text for item in self.items if has_text in item.text])
+
+            def count(self) -> int:
+                return len(self.items)
+
+            def nth(self, index: int) -> FakeTitleItem:
+                return self.items[index]
+
+        class FakePage:
+            def locator(self, selector: str) -> FakeTitleLocator:
+                return FakeTitleLocator(["00:56", "SJS_27"])
+
+        self.assertEqual(get_current_video_title(FakePage()), "SJS_27")
+
+    def test_current_title_returns_none_for_duration_only(self) -> None:
+        class FakeTitleItem:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return True
+
+            def inner_text(self, timeout: int = 0) -> str:
+                return self.text
+
+        class FakeTitleLocator:
+            def __init__(self, texts: list[str]) -> None:
+                self.items = [FakeTitleItem(text) for text in texts]
+
+            def filter(self, has_text: str) -> "FakeTitleLocator":
+                return FakeTitleLocator([item.text for item in self.items if has_text in item.text])
+
+            def count(self) -> int:
+                return len(self.items)
+
+            def nth(self, index: int) -> FakeTitleItem:
+                return self.items[index]
+
+        class FakePage:
+            def locator(self, selector: str) -> FakeTitleLocator:
+                return FakeTitleLocator(["00:56", "01:26", "1:02"])
+
+        self.assertIsNone(get_current_video_title(FakePage()))
+
+    def test_exact_title_span_visible_passes_verification(self) -> None:
+        class FakeTitleItem:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return True
+
+            def inner_text(self, timeout: int = 0) -> str:
+                return self.text
+
+        class FakeTitleLocator:
+            first = None
+
+            def __init__(self, texts: list[str]) -> None:
+                self.items = [FakeTitleItem(text) for text in texts]
+                self.first = self
+
+            def filter(self, has_text: str) -> "FakeTitleLocator":
+                return FakeTitleLocator([item.text for item in self.items if has_text in item.text])
+
+            def count(self) -> int:
+                return len(self.items)
+
+            def nth(self, index: int) -> FakeTitleItem:
+                return self.items[index]
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return bool(self.items)
+
+        class FakePage:
+            def locator(self, selector: str) -> FakeTitleLocator:
+                return FakeTitleLocator(["00:56", "SJS_27"])
+
+            def wait_for_timeout(self, timeout: int) -> None:
+                return None
+
+            def get_by_text(self, *args: object, **kwargs: object) -> FakeTitleLocator:
+                return FakeTitleLocator([])
+
+        self.assertTrue(verify_current_video_title(FakePage(), "SJS_27", []))
+
+    def test_exact_target_visible_passes_when_current_title_missing(self) -> None:
+        class FakeTitleItem:
+            def __init__(self, text: str, visible: bool = True) -> None:
+                self.text = text
+                self.visible = visible
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return self.visible
+
+            def inner_text(self, timeout: int = 0) -> str:
+                return self.text
+
+        class FakeTitleLocator:
+            first = None
+
+            def __init__(self, items: list[FakeTitleItem]) -> None:
+                self.items = items
+                self.first = self
+
+            def filter(self, has_text: str) -> "FakeTitleLocator":
+                return FakeTitleLocator([item for item in self.items if has_text in item.text])
+
+            def count(self) -> int:
+                return len(self.items)
+
+            def nth(self, index: int) -> FakeTitleItem:
+                return self.items[index]
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return any(item.visible for item in self.items)
+
+        class FakePage:
+            def locator(self, selector: str) -> FakeTitleLocator:
+                if selector == "span[class*='title']":
+                    return FakeTitleLocator([FakeTitleItem("SJS_27", visible=True)])
+                return FakeTitleLocator([])
+
+            def wait_for_timeout(self, timeout: int) -> None:
+                return None
+
+            def get_by_text(self, *args: object, **kwargs: object) -> FakeTitleLocator:
+                return FakeTitleLocator([])
+
+        self.assertTrue(verify_current_video_title(FakePage(), "SJS_27", []))
 
     def test_visible_download_button_is_selected_and_hidden_not_clicked(self) -> None:
         class FakeDownloadButton:
