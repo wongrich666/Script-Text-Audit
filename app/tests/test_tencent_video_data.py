@@ -30,6 +30,7 @@ from app.services.tencent_video_data.sync_service import (
     _download_or_snapshot,
     sync_tencent_video_exports,
 )
+from scripts.import_tencent_video_data import unique_paths
 
 
 class TencentVideoDataTests(unittest.TestCase):
@@ -449,6 +450,28 @@ class TencentVideoDataTests(unittest.TestCase):
             self.assertEqual(by_episode.loc[7, "script_text"], "第七集剧本文本")
             self.assertEqual(by_episode.loc[12, "script_text"], "第十二集剧本文本")
 
+    def test_align_episode_scripts_strips_utf8_bom(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            normalized_dir = base / "normalized"
+            script_dir = base / "episode_scripts"
+            normalized_dir.mkdir()
+            script_dir.mkdir()
+            pd.DataFrame(
+                {
+                    "episode_no": [1],
+                    "episode_title": ["SJS_01"],
+                    "script_text": [""],
+                }
+            ).to_csv(normalized_dir / "episode_samples.csv", index=False)
+            (script_dir / "SJS_01.txt").write_text("\ufeff这是第1集测试剧本文本。", encoding="utf-8")
+
+            align_episode_scripts(normalized_dir, script_dir)
+            samples = pd.read_csv(normalized_dir / "episode_samples.csv", keep_default_na=False)
+
+            self.assertEqual(samples.loc[0, "script_text"], "这是第1集测试剧本文本。")
+            self.assertNotIn("\ufeff", samples.loc[0, "script_text"])
+
     def test_align_episode_scripts_missing_directory_does_not_fail(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             normalized_dir = Path(temp_dir)
@@ -562,6 +585,21 @@ class TencentVideoDataTests(unittest.TestCase):
             self.assertIn("粉丝页面内容", snapshot_path.read_text(encoding="utf-8"))
             self.assertIn(str(snapshot_path), result.snapshot_files)
             self.assertTrue(any("未找到" in warning for warning in result.warnings))
+
+    def test_generated_file_list_deduplicates_episode_samples(self) -> None:
+        paths = [
+            "data/tencent_video_normalized/episode_samples.csv",
+            "data/tencent_video_normalized/market_feedback_summary.json",
+            "data/tencent_video_normalized/episode_samples.csv",
+        ]
+
+        self.assertEqual(
+            unique_paths(paths),
+            [
+                "data/tencent_video_normalized/episode_samples.csv",
+                "data/tencent_video_normalized/market_feedback_summary.json",
+            ],
+        )
 
 
 if __name__ == "__main__":

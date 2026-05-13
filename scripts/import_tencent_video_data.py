@@ -20,6 +20,17 @@ from app.services.tencent_video_data import (
 )
 
 
+def unique_paths(paths: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="导入腾讯视频创作后台导出的 Excel 数据。")
     parser.add_argument(
@@ -50,7 +61,7 @@ def main() -> None:
         + script_align_result.warnings
         + text_feature_result.warnings
     )
-    generated_files = (
+    generated_files = unique_paths(
         import_result.generated_files
         + analysis_result.generated_files
         + sample_result.generated_files

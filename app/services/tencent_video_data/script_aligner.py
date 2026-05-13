@@ -30,9 +30,9 @@ def load_episode_scripts(script_dir: str | Path) -> tuple[dict[int, str], list[s
             warnings.append(f"{script_path.name}: 无法从文件名提取集数，已跳过。")
             continue
         try:
-            text = script_path.read_text(encoding="utf-8").strip()
+            text = script_path.read_text(encoding="utf-8-sig").strip().lstrip("\ufeff")
         except UnicodeDecodeError:
-            text = script_path.read_text(encoding="utf-8-sig").strip()
+            text = script_path.read_text(encoding="utf-8").strip().lstrip("\ufeff")
         except Exception as exc:
             warnings.append(f"{script_path.name}: 读取失败，已跳过。原因：{exc}")
             continue
