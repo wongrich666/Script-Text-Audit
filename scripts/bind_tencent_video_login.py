@@ -27,17 +27,12 @@ def main() -> None:
         default=TENCENT_VIDEO_HOME_URL,
         help="腾讯视频创作后台登录入口",
     )
-    parser.add_argument(
-        "--headless",
-        action="store_true",
-        help="无头模式。首次登录通常不要开启。",
-    )
     args = parser.parse_args()
 
     state_path = save_login_state(
         state_path=args.state,
         login_url=args.login_url,
-        headless=args.headless,
+        headless=False,
     )
     print(f"腾讯视频登录态已保存：{state_path}")
     print("请不要把 data/tencent_video_auth/state.json 提交到 Git。")
