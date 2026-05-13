@@ -63,8 +63,11 @@ class TencentVideoAlbumTrendsSyncTests(unittest.TestCase):
             def scroll_into_view_if_needed(self, timeout: int = 0) -> None:
                 return None
 
-            def evaluate(self, script: str) -> None:
+            def evaluate(self, script: str) -> dict[str, str] | None:
+                if "className" in script:
+                    return {"className": "download-btn", "text": "下载数据"}
                 self.clicked = True
+                return None
 
         class FakeDownloadLocator:
             def __init__(self, buttons: list[FakeDownloadButton]) -> None:
@@ -145,7 +148,9 @@ class TencentVideoAlbumTrendsSyncTests(unittest.TestCase):
             def scroll_into_view_if_needed(self, timeout: int = 0) -> None:
                 return None
 
-            def evaluate(self, script: str) -> None:
+            def evaluate(self, script: str) -> dict[str, str] | None:
+                if "className" in script:
+                    return {"className": "download-btn", "text": "下载数据"}
                 return None
 
         class FakeDownloadLocator:

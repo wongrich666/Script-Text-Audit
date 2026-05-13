@@ -273,8 +273,11 @@ class TencentVideoVideoTrendsSyncTests(unittest.TestCase):
                     raise RuntimeError("hidden")
                 self.clicked = True
 
-            def evaluate(self, script: str) -> None:
+            def evaluate(self, script: str) -> dict[str, str] | None:
+                if "className" in script:
+                    return {"className": "download-btn", "text": "下载数据"}
                 self.clicked = True
+                return None
 
         class FakeDownloadLocator:
             def __init__(self, buttons: list[FakeDownloadButton]) -> None:
@@ -359,8 +362,11 @@ class TencentVideoVideoTrendsSyncTests(unittest.TestCase):
             def click(self, *args: object, **kwargs: object) -> None:
                 self.clicked = True
 
-            def evaluate(self, script: str) -> None:
+            def evaluate(self, script: str) -> dict[str, str] | None:
+                if "className" in script:
+                    return {"className": "download-btn", "text": "下载数据"}
                 self.clicked = True
+                return None
 
         class FakeDownloadLocator:
             def __init__(self, button: FakeDownloadButton | None) -> None:

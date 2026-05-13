@@ -191,9 +191,9 @@ def _find_first_visible(locator: Any, label: str) -> Any | None:
 
 def _target_scopes(page: Any, title: str) -> list[Any]:
     scopes: list[Any] = []
-    drawer = _visible_drawer(page)
-    if drawer is not None:
-        scopes.append(drawer)
+    drawer_item = find_video_item_in_drawer(page, title)
+    if drawer_item is not None:
+        scopes.append(drawer_item)
 
     for selector in [
         "li",
@@ -217,6 +217,23 @@ def _target_scopes(page: Any, title: str) -> list[Any]:
     return scopes
 
 
+def _element_debug_info(element: Any) -> tuple[str, str]:
+    try:
+        data = element.evaluate(
+            """
+            (node) => ({
+              className: node.className || '',
+              text: (node.innerText || node.textContent || '').trim()
+            })
+            """
+        )
+    except Exception:
+        return "", ""
+    if isinstance(data, dict):
+        return str(data.get("className") or ""), str(data.get("text") or "")
+    return "", ""
+
+
 def find_visible_download_button(page: Any, title: str) -> Any | None:
     scopes = _target_scopes(page, title)
 
@@ -231,7 +248,8 @@ def find_visible_download_button(page: Any, title: str) -> Any | None:
         for candidate in candidates:
             visible = _find_first_visible(candidate, scope_label)
             if visible is not None:
-                print(f"{title}: 选择当前可见“下载数据”按钮")
+                class_name, text = _element_debug_info(visible)
+                print(f"{title}: 选择当前可见“下载数据”按钮 className={class_name} text={text}")
                 return visible
         try:
             scope.scroll_into_view_if_needed(timeout=1000)
