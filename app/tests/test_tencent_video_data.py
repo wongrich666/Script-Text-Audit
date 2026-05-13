@@ -13,6 +13,8 @@ from app.services.tencent_video_data.analyzer import (
     generate_market_feedback_summary,
 )
 from app.services.tencent_video_data.importer import (
+    VIDEO_TREND_DAILY_FIELDS,
+    extract_video_title_from_trend_filename,
     identify_file_type,
     import_tencent_video_exports,
     normalize_dataframe,
@@ -103,6 +105,114 @@ class TencentVideoDataTests(unittest.TestCase):
             imported = pd.read_csv(output_file)
             self.assertEqual(list(imported["date"]), ["2026-05-10", "2026-05-11"])
             self.assertAlmostEqual(imported.loc[1, "valid_view_rate"], 0.6)
+
+    def test_extract_video_title_from_trend_filename(self) -> None:
+        self.assertEqual(
+            extract_video_title_from_trend_filename(Path("视频趋势数据-SJS_17-20260513-103000.xlsx")),
+            "SJS_17",
+        )
+        self.assertEqual(
+            extract_video_title_from_trend_filename(Path("视频趋势数据-小医奴10-20260513-103000.xlsx")),
+            "小医奴10",
+        )
+        self.assertIsNone(extract_video_title_from_trend_filename(Path("视频趋势数据.xlsx")))
+
+    def test_import_video_trend_daily_exports_from_subdirectory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            input_dir = base / "exports"
+            output_dir = base / "normalized"
+            trend_dir = input_dir / "video_trends"
+            trend_dir.mkdir(parents=True)
+
+            pd.DataFrame(
+                {
+                    "时间": ["2026-05-12"],
+                    "总播放量": [1000],
+                    "总有效播放量": [500],
+                    "有效播放量占比": ["50%"],
+                    "单次播放时长": [12],
+                    "单次播放时长占比": ["30%"],
+                    "点赞": [10],
+                    "评论": [2],
+                    "分享": [1],
+                }
+            ).to_excel(trend_dir / "视频趋势数据-SJS_17-20260513-103000.xlsx", index=False)
+            pd.DataFrame(
+                {
+                    "时间": ["2026-05-13"],
+                    "总播放量": [2000],
+                    "总有效播放量": [1200],
+                    "有效播放量占比": ["60%"],
+                    "单次播放时长": [15],
+                    "单次播放时长占比": ["40%"],
+                    "点赞": [20],
+                    "评论": [3],
+                    "分享": [2],
+                }
+            ).to_excel(trend_dir / "视频趋势数据-小医奴10-20260513-103000.xlsx", index=False)
+
+            result = import_tencent_video_exports(input_dir, output_dir)
+            output_file = output_dir / "video_trend_daily_stats.csv"
+            imported = pd.read_csv(output_file)
+
+            self.assertTrue(output_file.exists())
+            self.assertIn(str(output_file), result.generated_files)
+            self.assertEqual(list(imported.columns), VIDEO_TREND_DAILY_FIELDS)
+            self.assertEqual(set(imported["video_title"]), {"SJS_17", "小医奴10"})
+            self.assertEqual(set(imported["source_file"]), {
+                "视频趋势数据-SJS_17-20260513-103000.xlsx",
+                "视频趋势数据-小医奴10-20260513-103000.xlsx",
+            })
+            self.assertAlmostEqual(imported.loc[0, "valid_view_rate"], 0.5)
+            self.assertFalse((output_dir / "video_daily_stats.csv").exists())
+            self.assertFalse((output_dir / "episode_stats.csv").exists())
+
+    def test_video_trends_subdirectory_does_not_duplicate_root_video_daily(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            input_dir = base / "exports"
+            output_dir = base / "normalized"
+            trend_dir = input_dir / "video_trends"
+            trend_dir.mkdir(parents=True)
+
+            pd.DataFrame(
+                {
+                    "时间": ["2026-05-12"],
+                    "总播放量": [100],
+                    "总有效播放量": [50],
+                    "有效播放量占比": ["50%"],
+                }
+            ).to_excel(input_dir / "视频趋势数据-root.xlsx", index=False)
+            pd.DataFrame(
+                {
+                    "时间": ["2026-05-13"],
+                    "总播放量": [200],
+                    "总有效播放量": [120],
+                    "有效播放量占比": ["60%"],
+                }
+            ).to_excel(trend_dir / "视频趋势数据-SJS_17-20260513-103000.xlsx", index=False)
+
+            import_tencent_video_exports(input_dir, output_dir)
+            root_video = pd.read_csv(output_dir / "video_daily_stats.csv")
+            video_trend = pd.read_csv(output_dir / "video_trend_daily_stats.csv")
+
+            self.assertEqual(len(root_video), 1)
+            self.assertEqual(root_video.loc[0, "date"], "2026-05-12")
+            self.assertEqual(len(video_trend), 1)
+            self.assertEqual(video_trend.loc[0, "date"], "2026-05-13")
+
+    def test_missing_video_trends_directory_does_not_warn_or_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            input_dir = base / "exports"
+            output_dir = base / "normalized"
+            input_dir.mkdir()
+
+            result = import_tencent_video_exports(input_dir, output_dir)
+
+            self.assertEqual(result.generated_files, [])
+            self.assertFalse((output_dir / "video_trend_daily_stats.csv").exists())
 
     def test_empty_xlsx_warning(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

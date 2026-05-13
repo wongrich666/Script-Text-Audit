@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
 from datetime import datetime
+from pathlib import Path
 
 from scripts.sync_tencent_video_video_trends import (
     VideoTrendSyncResult,
@@ -10,6 +12,8 @@ from scripts.sync_tencent_video_video_trends import (
     dedupe_titles,
     find_video_item_in_drawer,
     filter_titles_by_pattern,
+    find_visible_download_button,
+    _download_current_video,
     _click_switch_video,
     _switch_to_video,
     sanitize_filename,
@@ -251,6 +255,196 @@ class TencentVideoVideoTrendsSyncTests(unittest.TestCase):
         self.assertFalse(switched)
         self.assertFalse(item.clicked)
         self.assertTrue(any("未找到“切换”按钮" in warning for warning in warnings))
+
+    def test_visible_download_button_is_selected_and_hidden_not_clicked(self) -> None:
+        class FakeDownloadButton:
+            def __init__(self, visible: bool) -> None:
+                self.visible = visible
+                self.clicked = False
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return self.visible
+
+            def scroll_into_view_if_needed(self, timeout: int = 0) -> None:
+                return None
+
+            def click(self, *args: object, **kwargs: object) -> None:
+                if not self.visible:
+                    raise RuntimeError("hidden")
+                self.clicked = True
+
+            def evaluate(self, script: str) -> None:
+                self.clicked = True
+
+        class FakeDownloadLocator:
+            def __init__(self, buttons: list[FakeDownloadButton]) -> None:
+                self.buttons = buttons
+
+            def count(self) -> int:
+                return len(self.buttons)
+
+            def nth(self, index: int) -> FakeDownloadButton:
+                return self.buttons[index]
+
+        class FakeScope:
+            def __init__(self, buttons: list[FakeDownloadButton]) -> None:
+                self.buttons = buttons
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return True
+
+            def get_by_text(self, *args: object, **kwargs: object) -> FakeDownloadLocator:
+                return FakeDownloadLocator(self.buttons)
+
+            def locator(self, selector: str) -> FakeDownloadLocator:
+                return FakeDownloadLocator(self.buttons)
+
+            def scroll_into_view_if_needed(self, timeout: int = 0) -> None:
+                return None
+
+            def wait_for_timeout(self, timeout: int) -> None:
+                return None
+
+        class FakeScopeLocator:
+            def __init__(self, scopes: list[FakeScope]) -> None:
+                self.scopes = scopes
+
+            def filter(self, has_text: str) -> "FakeScopeLocator":
+                return self
+
+            def count(self) -> int:
+                return len(self.scopes)
+
+            def nth(self, index: int) -> FakeScope:
+                return self.scopes[index]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.hidden = FakeDownloadButton(False)
+                self.visible = FakeDownloadButton(True)
+                self.buttons = [self.hidden, self.visible]
+                self.scope = FakeScope(self.buttons)
+                self.mouse = type("Mouse", (), {"wheel": lambda _self, x, y: None})()
+
+            def locator(self, selector: str) -> FakeScopeLocator | FakeDownloadLocator:
+                if "drawer" in selector:
+                    return FakeScopeLocator([])
+                return FakeScopeLocator([self.scope])
+
+            def get_by_text(self, *args: object, **kwargs: object) -> FakeDownloadLocator:
+                return FakeDownloadLocator(self.buttons)
+
+            def wait_for_timeout(self, timeout: int) -> None:
+                return None
+
+        page = FakePage()
+
+        button = find_visible_download_button(page, "SJS_17")
+        button.click()
+
+        self.assertFalse(page.hidden.clicked)
+        self.assertTrue(page.visible.clicked)
+
+    def test_video_download_success_path_is_correct(self) -> None:
+        class FakeDownloadButton:
+            def __init__(self) -> None:
+                self.clicked = False
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return True
+
+            def scroll_into_view_if_needed(self, timeout: int = 0) -> None:
+                return None
+
+            def click(self, *args: object, **kwargs: object) -> None:
+                self.clicked = True
+
+            def evaluate(self, script: str) -> None:
+                self.clicked = True
+
+        class FakeDownloadLocator:
+            def __init__(self, button: FakeDownloadButton | None) -> None:
+                self.button = button
+
+            def count(self) -> int:
+                return 1 if self.button is not None else 0
+
+            def nth(self, index: int) -> FakeDownloadButton:
+                if self.button is None:
+                    raise IndexError(index)
+                return self.button
+
+        class FakeScope:
+            def __init__(self, button: FakeDownloadButton) -> None:
+                self.button = button
+
+            def is_visible(self, timeout: int = 0) -> bool:
+                return True
+
+            def get_by_text(self, *args: object, **kwargs: object) -> FakeDownloadLocator:
+                return FakeDownloadLocator(self.button)
+
+            def locator(self, selector: str) -> FakeDownloadLocator:
+                return FakeDownloadLocator(self.button)
+
+            def scroll_into_view_if_needed(self, timeout: int = 0) -> None:
+                return None
+
+            def wait_for_timeout(self, timeout: int) -> None:
+                return None
+
+        class FakeScopeLocator:
+            def __init__(self, scopes: list[FakeScope]) -> None:
+                self.scopes = scopes
+
+            def filter(self, has_text: str) -> "FakeScopeLocator":
+                return self
+
+            def count(self) -> int:
+                return len(self.scopes)
+
+            def nth(self, index: int) -> FakeScope:
+                return self.scopes[index]
+
+        class FakeDownload:
+            def save_as(self, path: str) -> None:
+                Path(path).write_text("fake xlsx", encoding="utf-8")
+
+        class FakeDownloadInfo:
+            value = FakeDownload()
+
+        class FakeDownloadContext:
+            def __enter__(self) -> FakeDownloadInfo:
+                return FakeDownloadInfo()
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                return False
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.button = FakeDownloadButton()
+                self.scope = FakeScope(self.button)
+                self.mouse = type("Mouse", (), {"wheel": lambda _self, x, y: None})()
+
+            def locator(self, selector: str) -> FakeScopeLocator | FakeDownloadLocator:
+                if "drawer" in selector:
+                    return FakeScopeLocator([])
+                return FakeScopeLocator([self.scope])
+
+            def get_by_text(self, *args: object, **kwargs: object) -> FakeDownloadLocator:
+                return FakeDownloadLocator(self.button)
+
+            def wait_for_timeout(self, timeout: int) -> None:
+                return None
+
+            def expect_download(self, timeout: int = 0) -> FakeDownloadContext:
+                return FakeDownloadContext()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = _download_current_video(FakePage(), "SJS_17", Path(temp_dir), timeout_ms=100)
+
+            self.assertTrue(Path(path).exists())
+            self.assertIn("视频趋势数据-SJS_17-", Path(path).name)
 
 
 if __name__ == "__main__":

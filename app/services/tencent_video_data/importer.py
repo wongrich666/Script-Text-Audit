@@ -46,6 +46,20 @@ NUMERIC_FIELDS = {
     "shares",
 }
 
+VIDEO_TREND_DAILY_FIELDS = [
+    "video_title",
+    "source_file",
+    "date",
+    "total_views",
+    "total_valid_views",
+    "valid_view_rate",
+    "avg_watch_duration",
+    "avg_watch_duration_rate",
+    "likes",
+    "comments",
+    "shares",
+]
+
 FILE_SPECS = {
     "account": {
         "pattern": re.compile(r"^账号趋势数据-.*\.xlsx$", re.IGNORECASE),
@@ -132,6 +146,13 @@ def identify_file_type(path: Path) -> str | None:
     for file_type, spec in FILE_SPECS.items():
         if spec["pattern"].match(path.name):
             return file_type
+    return None
+
+
+def extract_video_title_from_trend_filename(path: Path) -> str | None:
+    match = re.match(r"^视频趋势数据-(.+)-\d{8}-\d{6}\.xlsx$", path.name, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip() or None
     return None
 
 
@@ -239,6 +260,72 @@ def normalize_dataframe(df: pd.DataFrame, file_type: str, source_name: str, warn
     return normalized
 
 
+def normalize_video_trend_daily_dataframe(
+    df: pd.DataFrame,
+    excel_path: Path,
+    warnings: list[str],
+) -> pd.DataFrame:
+    if df.empty:
+        warnings.append(f"{excel_path.name}: Excel 内容为空，已生成空的视频趋势标准化记录。")
+
+    video_title = extract_video_title_from_trend_filename(excel_path)
+    if video_title is None:
+        warnings.append(f"{excel_path.name}: 无法从文件名提取 video_title，已置为空。")
+        video_title = ""
+
+    df = df.rename(columns=lambda value: str(value).strip())
+    available_mapping = {
+        source: target
+        for source, target in FIELD_MAPPING.items()
+        if source in df.columns
+    }
+
+    normalized = df.rename(columns=available_mapping)
+    if normalized.columns.duplicated().any():
+        normalized = normalized.T.groupby(level=0, sort=False).first().T
+
+    for field in VIDEO_TREND_DAILY_FIELDS:
+        if field not in normalized.columns:
+            normalized[field] = pd.NA
+
+    normalized["video_title"] = video_title
+    normalized["source_file"] = excel_path.name
+    normalized = normalized[VIDEO_TREND_DAILY_FIELDS].copy()
+
+    if "date" in normalized.columns:
+        normalized["date"] = pd.to_datetime(normalized["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+    for field in NUMERIC_FIELDS.intersection(normalized.columns):
+        normalized[field] = normalized[field].map(lambda value: normalize_numeric(value, field))
+
+    return normalized
+
+
+def import_video_trend_daily_exports(input_path: Path, output_path: Path, result: ImportResult) -> None:
+    trend_dir = input_path / "video_trends"
+    if not trend_dir.exists():
+        return
+
+    frames: list[pd.DataFrame] = []
+    for excel_path in sorted(trend_dir.glob("*.xlsx")):
+        try:
+            df = pd.read_excel(excel_path, engine="openpyxl")
+        except Exception as exc:
+            result.warnings.append(f"{excel_path.name}: 读取失败，原因：{exc}")
+            continue
+
+        result.read_excels.append(str(excel_path))
+        frames.append(normalize_video_trend_daily_dataframe(df, excel_path, result.warnings))
+
+    if not frames:
+        return
+
+    merged = pd.concat(frames, ignore_index=True)
+    output_file = output_path / "video_trend_daily_stats.csv"
+    merged.to_csv(output_file, index=False, encoding="utf-8-sig")
+    result.generated_files.append(str(output_file))
+
+
 def import_tencent_video_exports(input_dir: str | Path, output_dir: str | Path) -> ImportResult:
     input_path = Path(input_dir)
     output_path = Path(output_dir)
@@ -276,5 +363,7 @@ def import_tencent_video_exports(input_dir: str | Path, output_dir: str | Path) 
         output_file = output_path / FILE_SPECS[file_type]["output"]
         merged.to_csv(output_file, index=False, encoding="utf-8-sig")
         result.generated_files.append(str(output_file))
+
+    import_video_trend_daily_exports(input_path, output_path, result)
 
     return result
