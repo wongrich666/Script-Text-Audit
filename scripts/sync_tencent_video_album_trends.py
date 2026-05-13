@@ -228,32 +228,182 @@ def _element_debug_info(element: Any) -> tuple[str, str]:
     return "", ""
 
 
-def find_visible_download_button(page: Any, title: str) -> Any | None:
-    scopes = _target_scopes(page, title)
+def _is_dom_visible(element: Any) -> bool:
+    try:
+        return bool(
+            element.evaluate(
+                """
+                (node) => {
+                  const style = window.getComputedStyle(node);
+                  return style.display !== 'none'
+                    && style.visibility !== 'hidden'
+                    && style.opacity !== '0'
+                    && (node.offsetParent !== null || node.getClientRects().length > 0);
+                }
+                """
+            )
+        )
+    except Exception:
+        try:
+            return bool(element.is_visible(timeout=500))
+        except Exception:
+            return False
 
-    for scope_index, scope in enumerate(scopes):
-        scope_label = f"{title}: scope#{scope_index}"
-        candidates = [
-            scope.get_by_text("下载数据", exact=True),
-            scope.locator("button:has-text('下载数据')"),
-            scope.locator("a:has-text('下载数据')"),
-            scope.locator("text=下载数据"),
-        ]
-        for candidate in candidates:
-            visible = _find_first_visible(candidate, scope_label)
+
+def _scroll_container_in_scope(scope: Any, *, to_top: bool = False, step: int = 900) -> bool:
+    try:
+        return bool(
+            scope.evaluate(
+                """
+                (node, args) => {
+                  const findScrollable = (root) => {
+                    const items = [root, ...Array.from(root.querySelectorAll('*'))];
+                    let best = null;
+                    for (const el of items) {
+                      const style = window.getComputedStyle(el);
+                      const overflowY = style.overflowY || style.overflow;
+                      const canScroll = /(auto|scroll|overlay)/.test(overflowY)
+                        || el.scrollHeight > el.clientHeight + 8;
+                      if (!canScroll) continue;
+                      if (!best || el.scrollHeight > best.scrollHeight) best = el;
+                    }
+                    return best || root;
+                  };
+                  const scroller = findScrollable(node);
+                  const before = scroller.scrollTop;
+                  if (args.toTop) {
+                    scroller.scrollTop = 0;
+                  } else {
+                    scroller.scrollTop = Math.min(
+                      scroller.scrollTop + args.step,
+                      scroller.scrollHeight - scroller.clientHeight
+                    );
+                  }
+                  return scroller.scrollTop !== before;
+                }
+                """,
+                {"toTop": to_top, "step": step},
+            )
+        )
+    except Exception:
+        return False
+
+
+def _visible_download_button_in_scope(scope: Any, title: str, label: str) -> Any | None:
+    selector = "button:has-text('下载数据'), a:has-text('下载数据'), [role='button']:has-text('下载数据')"
+    try:
+        locator = scope.locator(selector)
+        count = _locator_count(locator)
+        items = [locator.nth(index) for index in range(count)]
+    except Exception:
+        items = []
+        try:
+            for item in scope.query_selector_all("button, a, [role='button']"):
+                class_name, text = _element_debug_info(item)
+                if "下载数据" in text:
+                    items.append(item)
+        except Exception:
+            pass
+        count = len(items)
+
+    print(f"{title}: {label} 匹配按钮数量={count}")
+    for index, item in enumerate(items):
+        visible = _is_dom_visible(item)
+        print(f"{title}: {label} 下载按钮候选 #{index} visible={visible}")
+        if visible:
+            class_name, text = _element_debug_info(item)
+            print(f"{title}: 点击按钮 className={class_name} text={text}")
+            return item
+    return None
+
+
+def _find_title_scope_with_control(root: Any, title: str, control_text: str) -> Any | None:
+    title_locator = root.get_by_text(title, exact=True)
+    for index in range(_locator_count(title_locator)):
+        title_node = title_locator.nth(index)
+        if not _is_dom_visible(title_node):
+            continue
+        try:
+            handle = title_node.evaluate_handle(
+                """
+                (node, controlText) => {
+                  const hasControl = (root) => Array.from(
+                    root.querySelectorAll('button, a, [role="button"], span, div')
+                  ).some((el) => (el.innerText || el.textContent || '').trim() === controlText);
+                  let current = node;
+                  for (let depth = 0; current && depth < 10; depth += 1) {
+                    if (hasControl(current)) return current;
+                    current = current.parentElement;
+                  }
+                  return null;
+                }
+                """,
+                control_text,
+            )
+            row = handle.as_element()
+        except Exception:
+            row = None
+        if row is not None and _is_dom_visible(row):
+            return row
+    return None
+
+
+def _find_album_download_scope(page: Any, title: str, *, max_scrolls: int = 12) -> Any | None:
+    drawer = _visible_drawer(page)
+    roots: list[tuple[str, Any]] = []
+    if drawer is not None:
+        roots.append(("drawer", drawer))
+    roots.append(("page", page))
+
+    for root_name, root in roots:
+        for scroll_index in range(max_scrolls):
+            title_locator = root.get_by_text(title, exact=True)
+            count = _locator_count(title_locator)
+            print(f"{title}: {root_name} 第 {scroll_index + 1} 轮匹配标题节点数量={count}")
+            row = _find_title_scope_with_control(root, title, "下载数据")
+            if row is not None:
+                print(f"{title}: 已在 {root_name} 定位包含下载按钮的 parent scope")
+                return row
+
+            if root_name != "drawer" or not _scroll_container_in_scope(drawer, step=900):
+                break
+            page.wait_for_timeout(350)
+    return None
+
+
+def find_visible_download_button(page: Any, title: str) -> Any | None:
+    drawer = _visible_drawer(page)
+    if drawer is not None:
+        _scroll_container_in_scope(drawer, to_top=True)
+        page.wait_for_timeout(300)
+
+    for scroll_index in range(12):
+        scope = _find_album_download_scope(page, title, max_scrolls=1)
+        if scope is None:
+            scope = find_album_item_in_drawer(page, title, scroll_to_find=False)
+        if scope is not None:
+            scope_label = f"目标行#{scroll_index}"
+
+            try:
+                scope.scroll_into_view_if_needed(timeout=1000)
+            except Exception:
+                pass
+            page.wait_for_timeout(200)
+
+            visible = _visible_download_button_in_scope(scope, title, scope_label)
             if visible is not None:
-                class_name, text = _element_debug_info(visible)
-                print(f"{title}: 选择当前可见“下载数据”按钮 className={class_name} text={text}")
                 return visible
-        try:
-            scope.scroll_into_view_if_needed(timeout=1000)
-        except Exception:
+
+            _scroll_container_in_scope(scope, step=500)
+            page.wait_for_timeout(250)
+
+        if drawer is None:
+            page.wait_for_timeout(800)
+            continue
+        if not _scroll_container_in_scope(drawer, step=900):
             pass
-        try:
-            page.mouse.wheel(0, 800)
-            scope.wait_for_timeout(300)
-        except Exception:
-            pass
+        page.wait_for_timeout(350)
+
     print(f"{title}: 当前 drawer/目标行内未找到可见“下载数据”按钮")
     return None
 
@@ -292,23 +442,27 @@ def _visible_drawer(page: Any) -> Any | None:
     return None
 
 
-def collect_album_titles(page: Any, *, max_scrolls: int = 8, wait_ms: int = 500) -> list[str]:
+def collect_album_titles(page: Any, *, max_scrolls: int = 20, wait_ms: int = 500) -> list[str]:
     drawer = _visible_drawer(page)
     if drawer is None:
         return []
 
     titles: list[str] = []
-    last_count = -1
+    seen: set[str] = set()
+    stable_rounds = 0
     selectors = [
         ".titleText",
         "[class*='titleText']",
+        "div[class*='itemTexts']",
         "li",
         "div[class*='listItem']",
-        "div[class*='item']",
-        "div[class*='itemTexts']",
     ]
 
-    for _ in range(max_scrolls):
+    _scroll_container_in_scope(drawer, to_top=True)
+    page.wait_for_timeout(wait_ms)
+
+    for scroll_index in range(max_scrolls):
+        before_count = len(seen)
         for selector in selectors:
             locator = drawer.locator(selector)
             for index in range(_locator_count(locator)):
@@ -316,18 +470,21 @@ def collect_album_titles(page: Any, *, max_scrolls: int = 8, wait_ms: int = 500)
                     text = locator.nth(index).inner_text(timeout=1000).strip()
                 except Exception:
                     continue
-                if text and text != "切换":
-                    lines = [line.strip() for line in text.splitlines() if line.strip()]
-                    titles.extend(line for line in lines if line != "切换")
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                for line in lines:
+                    if line in {"切换", "下载数据"} or line in seen:
+                        continue
+                    seen.add(line)
+                    titles.append(line)
 
-        if len(titles) == last_count:
-            break
-        last_count = len(titles)
-
-        try:
-            page.mouse.wheel(0, 1800)
-            page.wait_for_timeout(wait_ms)
-        except Exception:
+        print(f"collect_album_titles: 第 {scroll_index + 1} 轮累计专辑标题 {len(seen)} 个")
+        moved = _scroll_container_in_scope(drawer, step=1400)
+        page.wait_for_timeout(wait_ms)
+        if len(seen) == before_count:
+            stable_rounds += 1
+        else:
+            stable_rounds = 0
+        if stable_rounds >= 2 and not moved:
             break
 
     return dedupe_titles(titles)
@@ -342,34 +499,89 @@ def _item_has_switch(item: Any) -> bool:
     return any(_locator_count(candidate) > 0 for candidate in candidates)
 
 
-def find_album_item_in_drawer(page: Any, title: str) -> Any | None:
+def _item_has_download_data(item: Any) -> bool:
+    candidates = [
+        item.get_by_text("下载数据", exact=True),
+        item.locator("button:has-text('下载数据')"),
+        item.locator("a:has-text('下载数据')"),
+        item.locator("[role='button']:has-text('下载数据')"),
+    ]
+    return any(_locator_count(candidate) > 0 for candidate in candidates)
+
+
+def _click_control_in_scope(scope: Any, text: str, timeout_ms: int) -> bool:
+    try:
+        candidates = [
+            scope.get_by_text(text, exact=True),
+            scope.locator(f"button:has-text('{text}')"),
+            scope.locator(f"a:has-text('{text}')"),
+            scope.locator(f"[role='button']:has-text('{text}')"),
+        ]
+        for candidate in candidates:
+            if _locator_count(candidate) == 0:
+                continue
+            _click_element_with_fallback(candidate.first, timeout_ms)
+            return True
+    except Exception:
+        pass
+
+    try:
+        target = scope.evaluate_handle(
+            """
+            (node, text) => Array.from(node.querySelectorAll('button, a, [role="button"], span, div'))
+              .find((el) => (el.innerText || el.textContent || '').trim() === text) || null
+            """,
+            text,
+        ).as_element()
+    except Exception:
+        target = None
+    if target is None:
+        return False
+    _click_element_with_fallback(target, timeout_ms)
+    return True
+
+
+def find_album_item_in_drawer(page: Any, title: str, *, scroll_to_find: bool = True) -> Any | None:
     drawer = _visible_drawer(page)
     if drawer is None:
         print(f"{title}: 未找到可见专辑抽屉")
         return None
 
-    candidates: list[Any] = []
-    for selector in ["li", "div[class*='listItem']", "div[class*='item']", "div[class*='itemTexts']"]:
-        locator = drawer.locator(selector).filter(has_text=title)
-        for index in range(_locator_count(locator)):
-            candidates.append(locator.nth(index))
+    if scroll_to_find:
+        _scroll_container_in_scope(drawer, to_top=True)
+        page.wait_for_timeout(300)
 
-    print(f"{title}: drawer 内匹配到 {len(candidates)} 个候选专辑 item")
-    fallback: Any | None = None
-    for index, item in enumerate(candidates):
-        try:
-            visible = bool(item.is_visible(timeout=500))
-        except Exception:
-            visible = False
-        print(f"{title}: 候选 item #{index} visible={visible}")
-        if not visible:
-            continue
-        if fallback is None:
-            fallback = item
-        if _item_has_switch(item):
-            print(f"{title}: 选择候选 item #{index}")
-            return item
-    return fallback
+    attempts = 14 if scroll_to_find else 1
+    for attempt in range(attempts):
+        scoped_row = _find_title_scope_with_control(drawer, title, "切换")
+        if scoped_row is not None:
+            print(f"{title}: 已定位包含“切换”的目标专辑行 parent scope")
+            return scoped_row
+
+        candidates: list[Any] = []
+        for selector in ["li", "div[class*='listItem']", "div[class*='item']"]:
+            locator = drawer.locator(selector).filter(has_text=title)
+            for index in range(_locator_count(locator)):
+                candidates.append(locator.nth(index))
+
+        print(f"{title}: drawer 内第 {attempt + 1} 轮匹配到 {len(candidates)} 个候选专辑 item")
+        fallback: Any | None = None
+        for index, item in enumerate(candidates):
+            visible = _is_dom_visible(item)
+            print(f"{title}: 候选 item #{index} visible={visible}")
+            if not visible:
+                continue
+            if fallback is None:
+                fallback = item
+            if _item_has_download_data(item) or _item_has_switch(item):
+                print(f"{title}: 选择候选 item #{index}")
+                return item
+        if fallback is not None:
+            return fallback
+        if not scroll_to_find or not _scroll_container_in_scope(drawer, step=900):
+            break
+        page.wait_for_timeout(350)
+    return None
 
 
 def _click_album_item(page: Any, title: str, timeout_ms: int, warnings: list[str] | None = None) -> bool:
@@ -386,25 +598,28 @@ def _click_album_item(page: Any, title: str, timeout_ms: int, warnings: list[str
     except Exception:
         pass
 
-    candidates = [
-        item.get_by_text("切换", exact=True),
-        item.locator("button:has-text('切换')"),
-        item.locator("text=切换"),
-    ]
-    for candidate in candidates:
-        if _locator_count(candidate) == 0:
-            continue
+    try:
+        item_text = item.inner_text(timeout=1000)
+    except Exception:
         try:
-            candidate.first.click(timeout=timeout_ms)
-            print(f"{title}: 已点击“切换”按钮")
-            return True
+            item_text = item.evaluate("(node) => (node.innerText || node.textContent || '')")
         except Exception:
-            try:
-                candidate.first.click(timeout=timeout_ms, force=True)
-                print(f"{title}: 已 force 点击“切换”按钮")
-                return True
-            except Exception:
-                continue
+            item_text = ""
+
+    if "当前" not in item_text and _click_control_in_scope(item, "切换", timeout_ms):
+        print(f"{title}: 已点击“切换”按钮")
+        return True
+
+    try:
+        item.evaluate("(node) => node.click()")
+        print(f"{title}: 已通过 DOM evaluate 点击专辑行")
+        return True
+    except Exception:
+        pass
+
+    if _click_control_in_scope(item, "切换", timeout_ms):
+        print(f"{title}: 已点击“切换”按钮")
+        return True
 
     try:
         item.evaluate(
@@ -511,8 +726,9 @@ def sync_album_trends(
                 if not _click_album_item(page, title, timeout_ms, result.warnings):
                     continue
                 _wait_current_title(page, title, timeout_ms)
-                downloaded = _download_album_data(page, title, output_path, timeout_ms)
                 close_album_drawer(page, result.warnings, timeout_ms=timeout_ms)
+                page.wait_for_timeout(1000)
+                downloaded = _download_album_data(page, title, output_path, timeout_ms)
                 if downloaded:
                     result.downloaded_files.extend(downloaded)
                 else:
