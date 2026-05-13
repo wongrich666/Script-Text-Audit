@@ -106,6 +106,46 @@ class TencentVideoDataTests(unittest.TestCase):
             self.assertEqual(list(imported["date"]), ["2026-05-10", "2026-05-11"])
             self.assertAlmostEqual(imported.loc[1, "valid_view_rate"], 0.6)
 
+    def test_album_import_fills_missing_title_from_download_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            input_dir = base / "exports"
+            output_dir = base / "normalized"
+            input_dir.mkdir()
+
+            missing_title_file = input_dir / "专辑趋势数据-小医奴-20260513-103000.xlsx"
+            empty_title_file = input_dir / "专辑趋势数据-冥府审判师-20260513-103500.xlsx"
+            pd.DataFrame(
+                {
+                    "时间": ["2026-05-12"],
+                    "总播放量": [1000],
+                    "总在追数": [80],
+                }
+            ).to_excel(missing_title_file, index=False)
+            pd.DataFrame(
+                {
+                    "时间": ["2026-05-13"],
+                    "标题": [pd.NA],
+                    "总播放量": [2000],
+                    "总在追数": [120],
+                }
+            ).to_excel(empty_title_file, index=False)
+
+            result = import_tencent_video_exports(input_dir, output_dir)
+            output_file = output_dir / "album_daily_stats.csv"
+            imported = pd.read_csv(output_file)
+
+            self.assertTrue(output_file.exists())
+            self.assertIn(str(missing_title_file), result.read_excels)
+            self.assertIn(str(empty_title_file), result.read_excels)
+            self.assertIn(str(output_file), result.generated_files)
+            self.assertFalse(imported["title"].isna().any())
+            self.assertEqual(
+                set(imported["title"]),
+                {"小医奴", "冥府审判师"},
+            )
+            self.assertEqual(set(imported["total_subscribers"]), {80, 120})
+
     def test_extract_video_title_from_trend_filename(self) -> None:
         self.assertEqual(
             extract_video_title_from_trend_filename(Path("视频趋势数据-SJS_17-20260513-103000.xlsx")),

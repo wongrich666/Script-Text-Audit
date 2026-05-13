@@ -19,7 +19,6 @@ from app.services.tencent_video_data import (
     import_tencent_video_exports,
 )
 
-
 def unique_paths(paths: list[str]) -> list[str]:
     seen: set[str] = set()
     unique: list[str] = []
