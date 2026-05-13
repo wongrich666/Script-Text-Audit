@@ -583,6 +583,90 @@ def normalize_ad_daily(df: pd.DataFrame, known_titles: list[str], script_registr
     return pd.DataFrame(rows)
 
 
+
+
+def make_ad_account_review_tables(ad_daily: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    review_columns_unique = [
+        "ad_account_name",
+        "extracted_title",
+        "script_id",
+        "script_title",
+        "match_status",
+        "match_method",
+        "match_confidence",
+        "match_reason",
+        "review_required",
+        "source_file",
+    ]
+
+    review_columns_by_spend = [
+        "ad_account_name",
+        "rows",
+        "total_spend",
+        "sample_extracted_title",
+        "sample_script_title",
+        "sample_match_status",
+        "sample_match_method",
+        "sample_match_confidence",
+        "sample_match_reason",
+    ]
+
+    if ad_daily.empty or "match_status" not in ad_daily.columns:
+        return (
+            pd.DataFrame(columns=review_columns_unique),
+            pd.DataFrame(columns=review_columns_by_spend),
+        )
+
+    review = ad_daily[
+        ad_daily["match_status"].isin(["account_name_generic", "needs_review", "unmatched", "ambiguous_match"])
+    ].copy()
+
+    if review.empty:
+        return (
+            pd.DataFrame(columns=review_columns_unique),
+            pd.DataFrame(columns=review_columns_by_spend),
+        )
+
+    for col in review_columns_unique:
+        if col not in review.columns:
+            review[col] = ""
+
+    review_unique = (
+        review[review_columns_unique]
+        .drop_duplicates()
+        .sort_values(["match_status", "ad_account_name"], kind="stable")
+        .reset_index(drop=True)
+    )
+
+    review["spend_numeric"] = pd.to_numeric(review.get("spend", 0), errors="coerce").fillna(0)
+
+    rows = []
+    for account_name, group in review.groupby("ad_account_name", dropna=False):
+        first = group.iloc[0]
+        rows.append(
+            {
+                "ad_account_name": account_name,
+                "rows": int(len(group)),
+                "total_spend": round(float(group["spend_numeric"].sum()), 4),
+                "sample_extracted_title": first.get("extracted_title", ""),
+                "sample_script_title": first.get("script_title", ""),
+                "sample_match_status": first.get("match_status", ""),
+                "sample_match_method": first.get("match_method", ""),
+                "sample_match_confidence": first.get("match_confidence", ""),
+                "sample_match_reason": first.get("match_reason", ""),
+            }
+        )
+
+    review_by_spend = pd.DataFrame(rows, columns=review_columns_by_spend)
+    if not review_by_spend.empty:
+        review_by_spend = review_by_spend.sort_values(
+            ["total_spend", "rows", "ad_account_name"],
+            ascending=[False, False, True],
+            kind="stable",
+        ).reset_index(drop=True)
+
+    return review_unique, review_by_spend
+
 def make_match_report(catalog: pd.DataFrame, drama_daily: pd.DataFrame, ad_daily: pd.DataFrame) -> pd.DataFrame:
     rows = []
 
@@ -735,6 +819,7 @@ def main() -> None:
     )
 
     match_report = make_match_report(catalog, drama_daily, ad_daily)
+    ad_account_review_unique, ad_account_review_by_spend = make_ad_account_review_tables(ad_daily)
 
     write_csv(script_registry, output_dir / "script_registry.csv")
     write_csv(catalog, output_dir / "kuaishou_drama_catalog.csv")
@@ -742,6 +827,8 @@ def main() -> None:
     write_csv(ad_daily, output_dir / "kuaishou_ad_account_daily_stats.csv")
     write_csv(overall_daily, output_dir / "kuaishou_overall_daily_stats.csv")
     write_csv(match_report, output_dir / "kuaishou_title_match_report.csv")
+    write_csv(ad_account_review_unique, output_dir / "kuaishou_ad_account_review_unique.csv")
+    write_csv(ad_account_review_by_spend, output_dir / "kuaishou_ad_account_review_by_spend.csv")
 
     summary = {
         "platform": PLATFORM,
@@ -755,6 +842,8 @@ def main() -> None:
         "ad_account_daily_rows": int(len(ad_daily)),
         "overall_daily_rows": int(len(overall_daily)),
         "match_report_rows": int(len(match_report)),
+        "ad_account_review_unique_rows": int(len(ad_account_review_unique)),
+        "ad_account_review_by_spend_rows": int(len(ad_account_review_by_spend)),
         "catalog_match_status_counts": catalog["match_status"].value_counts(dropna=False).to_dict() if not catalog.empty else {},
         "drama_daily_match_status_counts": drama_daily["match_status"].value_counts(dropna=False).to_dict() if not drama_daily.empty else {},
         "ad_daily_match_status_counts": ad_daily["match_status"].value_counts(dropna=False).to_dict() if not ad_daily.empty else {},
@@ -775,6 +864,8 @@ def main() -> None:
     print(f"[kuaishou] 广告账户日数据行数：{len(ad_daily)}")
     print(f"[kuaishou] 平台整体日数据行数：{len(overall_daily)}")
     print(f"[kuaishou] 需处理匹配问题行数：{len(match_report)}")
+    print(f"[kuaishou] 广告账户复核去重行数：{len(ad_account_review_unique)}")
+    print(f"[kuaishou] 广告账户复核按消耗聚合行数：{len(ad_account_review_by_spend)}")
     print(f"[kuaishou] 输出目录：{output_dir}")
 
     if unknown_files:
