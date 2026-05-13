@@ -146,7 +146,18 @@ def build_script_registry(episode_scripts_dir: Path) -> pd.DataFrame:
             }
         )
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "script_id",
+            "canonical_title",
+            "title_norm",
+            "aliases",
+            "script_path",
+            "episode_count",
+            "content_hash",
+        ],
+    )
 
 
 def classify_table(df: pd.DataFrame) -> str:
@@ -158,6 +169,32 @@ def classify_table(df: pd.DataFrame) -> str:
     if "短剧名称" in cols and ("付费金额" in cols or "全域ROI" in cols or "消耗" in cols):
         return "drama_daily"
 
+    has_date = "日期" in cols
+    has_drama_entity = "短剧名称" in cols
+    has_ad_entity = "广告账户名称" in cols or "广告账户" in cols
+    overall_markers = {
+        "视频-播放量",
+        "视频-点赞量",
+        "视频-评论量",
+        "视频-收藏量",
+        "付费人数",
+        "付费订单数",
+        "付费金额（元）",
+        "付费金额(元)",
+        "消耗（元）",
+        "消耗(元)",
+        "消耗（ 元）",
+        "全域ROI",
+        "商业化ROI",
+        "IAA广告含返货LTV(元)",
+        "IAA广告含返货变现ROI",
+        "IAA广告不含返货LTV(元)",
+        "IAA广告不含返货变现ROI",
+    }
+
+    if has_date and not has_drama_entity and not has_ad_entity and (cols & overall_markers):
+        return "overall_daily"
+
     if "广告账户名称" in cols or "广告账户" in cols or "花费（元）" in cols or "花费(元)" in cols:
         return "ad_account_daily"
 
@@ -165,7 +202,6 @@ def classify_table(df: pd.DataFrame) -> str:
         return "core_daily"
 
     return "unknown"
-
 
 def safe_get(row: pd.Series, *names: str) -> Any:
     for name in names:
@@ -343,6 +379,59 @@ def match_title_to_script(raw_title: Any, script_registry: pd.DataFrame) -> Matc
 
     return MatchResult("", "", "script_file_missing", "none", round(float(best_score), 4), True, "no_good_script_match")
 
+
+
+
+def normalize_overall_daily(df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+
+    for _, row in df.iterrows():
+        rows.append(
+            {
+                "platform": PLATFORM,
+                "date": safe_get(row, "日期"),
+                "play_count": to_number(safe_get(row, "视频-播放量", "视频播放量", "播放量")),
+                "like_count": to_number(safe_get(row, "视频-点赞量", "点赞量", "点赞数")),
+                "comment_count": to_number(safe_get(row, "视频-评论量", "评论量", "评论数")),
+                "favorite_count": to_number(safe_get(row, "视频-收藏量", "收藏量", "收藏数")),
+                "paid_users": to_number(safe_get(row, "付费人数")),
+                "paid_orders": to_number(safe_get(row, "付费订单数", "付费单量")),
+                "paid_amount": to_number(safe_get(row, "付费金额（元）", "付费金额(元)", "付费金额")),
+                "ad_spend": to_number(safe_get(row, "消耗（元）", "消耗(元)", "消耗（ 元）", "消耗", "花费（元）", "花费(元)")),
+                "global_roi": to_number(safe_get(row, "全域ROI", "全域 ROI")),
+                "commercial_roi": to_number(safe_get(row, "商业化ROI", "商业化 ROI")),
+                "iaa_ltv_with_rebate": to_number(safe_get(row, "IAA广告含返货LTV(元)", "IAA广告含返货LTV（元）")),
+                "iaa_roi_with_rebate": to_number(safe_get(row, "IAA广告含返货变现ROI")),
+                "iaa_ltv_without_rebate": to_number(safe_get(row, "IAA广告不含返货LTV(元)", "IAA广告不含返货LTV（元）")),
+                "iaa_roi_without_rebate": to_number(safe_get(row, "IAA广告不含返货变现ROI")),
+                "source_file": safe_get(row, "source_file"),
+                "source_sheet": safe_get(row, "source_sheet"),
+            }
+        )
+
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "platform",
+            "date",
+            "play_count",
+            "like_count",
+            "comment_count",
+            "favorite_count",
+            "paid_users",
+            "paid_orders",
+            "paid_amount",
+            "ad_spend",
+            "global_roi",
+            "commercial_roi",
+            "iaa_ltv_with_rebate",
+            "iaa_roi_with_rebate",
+            "iaa_ltv_without_rebate",
+            "iaa_roi_without_rebate",
+            "source_file",
+            "source_sheet",
+        ],
+    )
 
 def normalize_catalog(df: pd.DataFrame, script_registry: pd.DataFrame) -> pd.DataFrame:
     rows = []
@@ -585,6 +674,7 @@ def main() -> None:
     all_catalog_frames: list[pd.DataFrame] = []
     all_drama_daily_frames: list[pd.DataFrame] = []
     all_ad_daily_frames: list[pd.DataFrame] = []
+    all_overall_daily_frames: list[pd.DataFrame] = []
     unknown_files: list[dict[str, str]] = []
 
     files = [
@@ -605,6 +695,8 @@ def main() -> None:
                 all_catalog_frames.append(df)
             elif kind == "drama_daily":
                 all_drama_daily_frames.append(df)
+            elif kind == "overall_daily":
+                all_overall_daily_frames.append(df)
             elif kind in {"ad_account_daily", "core_daily"}:
                 all_ad_daily_frames.append(df)
             else:
@@ -613,6 +705,7 @@ def main() -> None:
     raw_catalog = pd.concat(all_catalog_frames, ignore_index=True) if all_catalog_frames else pd.DataFrame()
     raw_drama_daily = pd.concat(all_drama_daily_frames, ignore_index=True) if all_drama_daily_frames else pd.DataFrame()
     raw_ad_daily = pd.concat(all_ad_daily_frames, ignore_index=True, sort=False) if all_ad_daily_frames else pd.DataFrame()
+    raw_overall_daily = pd.concat(all_overall_daily_frames, ignore_index=True, sort=False) if all_overall_daily_frames else pd.DataFrame()
 
     catalog = normalize_catalog(raw_catalog, script_registry) if not raw_catalog.empty else pd.DataFrame()
 
@@ -635,12 +728,19 @@ def main() -> None:
         else pd.DataFrame()
     )
 
+    overall_daily = (
+        normalize_overall_daily(raw_overall_daily)
+        if not raw_overall_daily.empty
+        else pd.DataFrame()
+    )
+
     match_report = make_match_report(catalog, drama_daily, ad_daily)
 
     write_csv(script_registry, output_dir / "script_registry.csv")
     write_csv(catalog, output_dir / "kuaishou_drama_catalog.csv")
     write_csv(drama_daily, output_dir / "kuaishou_drama_daily_stats.csv")
     write_csv(ad_daily, output_dir / "kuaishou_ad_account_daily_stats.csv")
+    write_csv(overall_daily, output_dir / "kuaishou_overall_daily_stats.csv")
     write_csv(match_report, output_dir / "kuaishou_title_match_report.csv")
 
     summary = {
@@ -653,6 +753,7 @@ def main() -> None:
         "drama_catalog_rows": int(len(catalog)),
         "drama_daily_rows": int(len(drama_daily)),
         "ad_account_daily_rows": int(len(ad_daily)),
+        "overall_daily_rows": int(len(overall_daily)),
         "match_report_rows": int(len(match_report)),
         "catalog_match_status_counts": catalog["match_status"].value_counts(dropna=False).to_dict() if not catalog.empty else {},
         "drama_daily_match_status_counts": drama_daily["match_status"].value_counts(dropna=False).to_dict() if not drama_daily.empty else {},
@@ -672,6 +773,7 @@ def main() -> None:
     print(f"[kuaishou] 短剧资产行数：{len(catalog)}")
     print(f"[kuaishou] 短剧日数据行数：{len(drama_daily)}")
     print(f"[kuaishou] 广告账户日数据行数：{len(ad_daily)}")
+    print(f"[kuaishou] 平台整体日数据行数：{len(overall_daily)}")
     print(f"[kuaishou] 需处理匹配问题行数：{len(match_report)}")
     print(f"[kuaishou] 输出目录：{output_dir}")
 
